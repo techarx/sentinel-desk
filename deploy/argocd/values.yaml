@@ -1,0 +1,13 @@
+# Helm values for the argo/argo-cd chart in the local kind cluster.
+# Kept small: one replica of everything, no Dex (Keycloak arrives in Phase 5).
+global:
+  nodeSelector:
+    workload: general
+
+dex:
+  enabled: false
+
+configs:
+  params:
+    # TLS is terminated by kubectl port-forward locally; Istio takes over in Phase 5.
+    server.insecure: true

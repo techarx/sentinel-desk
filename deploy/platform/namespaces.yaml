@@ -1,0 +1,25 @@
+# Namespaces for the platform. Pod Security Admission labels enforce the
+# "restricted" profile from day one; it only gets stricter in later phases.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sandbox
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sentinel
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted

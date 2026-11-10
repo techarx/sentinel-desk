@@ -1,0 +1,30 @@
+# kind cluster: 1 control plane, 2 workers.
+# worker 2 is the sandbox node: labelled sandbox=true, tainted so only sandbox
+# pods land there, and given the gVisor binaries from the host.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: sentinel
+nodes:
+  - role: control-plane
+  - role: worker
+    labels:
+      workload: general
+  - role: worker
+    labels:
+      sandbox: "true"
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          taints:
+            - key: sandbox
+              value: "true"
+              effect: NoSchedule
+    # bootstrap.sh installs these on the dev machine via the gVisor apt repo.
+    extraMounts:
+      - hostPath: /usr/bin/runsc
+        containerPath: /usr/local/bin/runsc
+        readOnly: true
+      - hostPath: /usr/bin/containerd-shim-runsc-v1
+        containerPath: /usr/local/bin/containerd-shim-runsc-v1
+        readOnly: true

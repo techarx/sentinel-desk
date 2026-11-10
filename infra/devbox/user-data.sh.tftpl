@@ -1,0 +1,14 @@
+#!/bin/bash
+# Rendered by Terraform. Runs once, as root, on first boot.
+set -euo pipefail
+
+install -d -m 700 -o ubuntu -g ubuntu /home/ubuntu/.ssh
+echo "${ssh_public_key}" >> /home/ubuntu/.ssh/authorized_keys
+chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys
+chmod 600 /home/ubuntu/.ssh/authorized_keys
+
+cat > /usr/local/sbin/sentinel-bootstrap.sh <<'BOOTSTRAP'
+${bootstrap}
+BOOTSTRAP
+chmod +x /usr/local/sbin/sentinel-bootstrap.sh
+/usr/local/sbin/sentinel-bootstrap.sh > /var/log/sentinel-bootstrap.log 2>&1

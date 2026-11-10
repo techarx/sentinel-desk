@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+
+ssh_public_key     = "ssh-ed25519 AAAA... you@mac"   # cat ~/.ssh/id_ed25519.pub
+alert_email        = "you@example.com"
+monthly_budget_usd = 150
+
+# Optional overrides
+# region         = "us-east-1"
+# instance_type  = "r6i.2xlarge"
+# root_volume_gb = 150

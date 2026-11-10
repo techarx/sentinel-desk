@@ -1,0 +1,29 @@
+# Proves the sandbox runtime works: under gVisor, the kernel version reported
+# inside the pod is gVisor's emulated one (4.4.0), not the host's real kernel.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gvisor-smoke
+  namespace: sandbox
+spec:
+  runtimeClassName: gvisor
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: check
+      image: busybox:1.36
+      command: ["sh", "-c", "echo kernel=$(uname -r); cat /proc/version"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi

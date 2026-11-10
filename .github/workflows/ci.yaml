@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive infra
+      - run: terraform -chdir=infra/devbox init -backend=false
+      - run: terraform -chdir=infra/devbox validate
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck infra/devbox/bootstrap.sh deploy/kind/install-gvisor.sh
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
+      - name: Validate Kubernetes manifests
+        # Argo CD Application CRDs have no built-in schema; they are checked for YAML validity only.
+        run: kubeconform -strict -summary -ignore-missing-schemas deploy/platform deploy/tests deploy/argocd/apps deploy/argocd/root-app.yaml
+
+  python:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('**/*.py') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+
+  # Added in later phases: golangci-lint (sidecar-go), eslint (ui), image build + Trivy + cosign, eval gate.
