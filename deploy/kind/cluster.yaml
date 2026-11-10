@@ -21,10 +21,15 @@ nodes:
               value: "true"
               effect: NoSchedule
     # bootstrap.sh installs these on the dev machine via the gVisor apt repo.
+    # Recent runsc releases also need their helper binaries (gvisor_sentry etc.)
+    # in a gvisor-bin/ folder next to runsc, so that folder is mounted too.
     extraMounts:
       - hostPath: /usr/bin/runsc
         containerPath: /usr/local/bin/runsc
         readOnly: true
       - hostPath: /usr/bin/containerd-shim-runsc-v1
         containerPath: /usr/local/bin/containerd-shim-runsc-v1
+        readOnly: true
+      - hostPath: /usr/bin/gvisor-bin
+        containerPath: /usr/local/bin/gvisor-bin
         readOnly: true

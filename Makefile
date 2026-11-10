@@ -1,5 +1,6 @@
 SHELL := /bin/bash
-.SHELLFLAGS := -euo pipefail -c
+# No -u: over SSH, bash sources /etc/bash.bashrc, which reads the unset PS1.
+.SHELLFLAGS := -eo pipefail -c
 .DEFAULT_GOAL := help
 
 CLUSTER      ?= sentinel
@@ -86,7 +87,9 @@ verify-gvisor: ## Run a pod under gVisor and check it reports gVisor's kernel
 	kubectl apply -f deploy/tests/gvisor-smoke.yaml
 	kubectl wait -n sandbox --for=jsonpath='{.status.phase}'=Succeeded pod/gvisor-smoke --timeout=90s
 	@out="$$(kubectl logs -n sandbox gvisor-smoke)"; echo "$$out"; \
-	if grep -q 'kernel=4.4.0' <<<"$$out"; then echo "PASS: pod ran under gVisor"; \
+	host="$$(uname -r)"; echo "host kernel=$$host"; \
+	if grep -qi 'gvisor' <<<"$$out" && ! grep -q "kernel=$$host" <<<"$$out"; then \
+	  echo "PASS: pod ran under gVisor (it sees gVisor's kernel, not the host's)"; \
 	else echo "FAIL: pod did not run under gVisor"; exit 1; fi
 	kubectl delete pod -n sandbox gvisor-smoke
 

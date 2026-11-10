@@ -7,7 +7,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: REPO_URL_PLACEHOLDER
+    repoURL: https://github.com/techarx/sentinel-desk.git
     targetRevision: main
     path: deploy/platform
   destination:

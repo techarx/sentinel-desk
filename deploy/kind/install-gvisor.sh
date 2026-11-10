@@ -26,6 +26,12 @@ for node in ${nodes}; do
   docker exec "${node}" test -x /usr/local/bin/runsc \
     || { echo "    /usr/local/bin/runsc missing: is gVisor installed on the host?" >&2; exit 1; }
 
+  # Newer runsc releases keep helpers (gvisor_sentry, ...) in gvisor-bin/ beside runsc.
+  if [[ -d /usr/bin/gvisor-bin ]]; then
+    docker exec "${node}" test -x /usr/local/bin/gvisor-bin/gvisor_sentry \
+      || { echo "    gvisor-bin/ not mounted into ${node}: recreate the cluster (make down && make up)" >&2; exit 1; }
+  fi
+
   major="$(docker exec "${node}" containerd --version | sed -E 's/.* v?([0-9]+)\..*/\1/')"
   if [[ "${major}" -ge 2 ]]; then
     plugin='io.containerd.cri.v1.runtime'
