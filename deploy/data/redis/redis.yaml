@@ -1,0 +1,99 @@
+# Redis 7, single instance: Redis Streams for the trade feed (Phase 1) and
+# working memory for agents (Phase 3).
+#
+# - Append-only file (AOF) on, so stream entries survive a restart.
+# - noeviction: when memory is full Redis rejects writes instead of silently
+#   dropping stream data; the trade generator caps the stream length instead.
+# - Password from the redis-auth Secret made by scripts/secrets.sh.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: data
+  labels: { app: redis }
+spec:
+  selector: { app: redis }
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: data
+  labels: { app: redis }
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      nodeSelector:
+        workload: data
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          args:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --dir
+            - /data
+            - --requirepass
+            - $(REDIS_PASSWORD)
+            - --maxmemory
+            - 768mb
+            - --maxmemory-policy
+            - noeviction
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: redis-auth, key: password }
+            - name: REDISCLI_AUTH   # lets redis-cli in the probes authenticate without a password on the command line
+              valueFrom:
+                secretKeyRef: { name: redis-auth, key: password }
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: sentinel-data
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

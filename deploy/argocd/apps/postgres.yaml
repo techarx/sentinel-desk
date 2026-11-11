@@ -1,0 +1,21 @@
+# The Sentinel Desk Postgres database (a CloudNativePG Cluster resource).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/techarx/sentinel-desk.git
+    targetRevision: main
+    path: deploy/data/postgres
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions:
+      - SkipDryRunOnMissingResource=true   # Cluster CRD may not exist yet on the very first sync

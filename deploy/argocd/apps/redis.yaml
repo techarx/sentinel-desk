@@ -1,0 +1,19 @@
+# Redis: a plain StatefulSet from this repo (no third-party chart).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: redis
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/techarx/sentinel-desk.git
+    targetRevision: main
+    path: deploy/data/redis
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

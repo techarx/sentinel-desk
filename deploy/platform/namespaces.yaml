@@ -23,3 +23,12 @@ metadata:
   labels:
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/warn: restricted
+---
+# Prometheus node-exporter needs host networking and host PID to read node
+# metrics, which only the "privileged" Pod Security level allows.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: privileged

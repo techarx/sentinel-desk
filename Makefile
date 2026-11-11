@@ -38,7 +38,7 @@ devbox-down: ## Destroy the dev machine, its disk and its VPC
 # ---------------------------------------------------------------------------
 
 .PHONY: up
-up: cluster gvisor platform argocd ## Build everything from scratch
+up: cluster gvisor platform secrets argocd ## Build everything from scratch
 	@echo
 	@echo "Cluster ready. Argo CD UI: make argocd-ui"
 
@@ -62,6 +62,10 @@ gvisor:
 platform:
 	# Applied directly once so the cluster works before Argo CD syncs; Argo CD owns it afterwards.
 	kubectl apply -f deploy/platform/
+
+.PHONY: secrets
+secrets: ## Create data-store passwords as Secrets (generated once, kept on the dev machine, never in Git)
+	./scripts/secrets.sh
 
 .PHONY: argocd
 argocd:
@@ -132,7 +136,7 @@ set-repo: ## Point Argo CD at your Git repo: make set-repo REPO=https://github.c
 .PHONY: lint
 lint: ## Run the same checks as CI (needs terraform and shellcheck)
 	terraform fmt -check -recursive infra
-	shellcheck infra/devbox/bootstrap.sh deploy/kind/install-gvisor.sh
+	shellcheck infra/devbox/bootstrap.sh deploy/kind/install-gvisor.sh scripts/secrets.sh
 
 .PHONY: help
 help: ## Show this help

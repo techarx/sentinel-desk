@@ -1,0 +1,58 @@
+# Neo4j Community: the counterparty graph.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: neo4j
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.neo4j.com/neo4j
+    chart: neo4j
+    targetRevision: 2026.10.2
+    helm:
+      releaseName: neo4j
+      valuesObject:
+        # The chart otherwise queries the live cluster while rendering (e.g. to
+        # check a node matches nodeSelector). Argo CD renders charts without
+        # cluster access, so those lookups fail; turn them off.
+        disableLookups: true
+        neo4j:
+          name: neo4j
+          edition: community
+          passwordFromSecret: neo4j-auth   # key NEO4J_AUTH = neo4j/<password>, made by scripts/secrets.sh
+          resources:
+            cpu: "1"
+            memory: 2Gi
+        config:
+          server.memory.heap.initial_size: 768m
+          server.memory.heap.max_size: 768m
+          server.memory.pagecache.size: 512m
+        volumes:
+          data:
+            mode: dynamic
+            dynamic:
+              storageClassName: sentinel-data
+              requests:
+                storage: 10Gi
+        nodeSelector:
+          workload: data
+        # Merged into the chart's defaults (non-root, all capabilities dropped)
+        # to meet the "restricted" Pod Security level.
+        containerSecurityContext:
+          allowPrivilegeEscalation: false
+          seccompProfile:
+            type: RuntimeDefault
+        services:
+          neo4j:
+            # The chart defaults to a cloud LoadBalancer, which never becomes
+            # ready in kind. Inside the cluster a ClusterIP is all we need.
+            spec:
+              type: ClusterIP
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

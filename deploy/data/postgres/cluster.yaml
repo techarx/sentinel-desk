@@ -1,0 +1,56 @@
+# Postgres 17 with pgvector, managed by CloudNativePG.
+#
+# - One instance (a dev cluster); CNPG would add replicas by raising `instances`.
+# - The app user's password comes from the pg-app-credentials Secret that
+#   scripts/secrets.sh creates, so it survives cluster rebuilds.
+# - Data lives on the sentinel-data StorageClass (the dev machine's disk).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: sentinel-pg
+  namespace: data
+spec:
+  instances: 1
+  # "standard" images include pgvector.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17-standard-trixie
+
+  bootstrap:
+    initdb:
+      database: sentinel
+      owner: sentinel
+      secret:
+        name: pg-app-credentials
+      postInitApplicationSQL:
+        # Fails loudly at setup if the image lacks pgvector.
+        - CREATE EXTENSION IF NOT EXISTS vector;
+
+  storage:
+    storageClass: sentinel-data
+    size: 10Gi
+
+  affinity:
+    nodeSelector:
+      workload: data
+
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits: { memory: 2Gi }
+
+  postgresql:
+    parameters:
+      shared_buffers: 512MB
+      maintenance_work_mem: 256MB   # speeds up building pgvector HNSW indexes
+      max_connections: "100"
+---
+# Lets Prometheus scrape Postgres metrics (CNPG serves them on port "metrics").
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: sentinel-pg
+  namespace: data
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: sentinel-pg
+  podMetricsEndpoints:
+    - port: metrics

@@ -1,0 +1,71 @@
+# Prometheus + Grafana (kube-prometheus-stack).
+# Wave -2: its CRDs (ServiceMonitor, PodMonitor) must exist before the data
+# stores and services that declare what Prometheus should scrape.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 93.2.0
+    helm:
+      releaseName: monitoring
+      valuesObject:
+        # Not needed for a dev cluster.
+        alertmanager:
+          enabled: false
+        # kind runs these control-plane parts in ways Prometheus can't scrape
+        # by default; disabling avoids permanently "down" targets.
+        kubeEtcd: { enabled: false }
+        kubeControllerManager: { enabled: false }
+        kubeScheduler: { enabled: false }
+        kubeProxy: { enabled: false }
+
+        prometheus:
+          prometheusSpec:
+            retention: 3d
+            # Scrape every ServiceMonitor / PodMonitor in the cluster, not only
+            # ones labelled for this Helm release.
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            nodeSelector:
+              workload: general
+            resources:
+              requests: { cpu: 200m, memory: 512Mi }
+              limits: { memory: 1536Mi }
+
+        grafana:
+          admin:
+            existingSecret: grafana-admin   # made by scripts/secrets.sh
+            userKey: admin-user
+            passwordKey: admin-password
+          nodeSelector:
+            workload: general
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 384Mi }
+          # Dashboards stored as ConfigMaps labelled grafana_dashboard=1 load automatically (used in step 1.5).
+          sidecar:
+            dashboards:
+              enabled: true
+              searchNamespace: ALL
+
+        prometheusOperator:
+          nodeSelector:
+            workload: general
+        kube-state-metrics:
+          nodeSelector:
+            workload: general
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions:
+      - ServerSideApply=true   # the Prometheus CRDs are too large for client-side apply

@@ -1,0 +1,43 @@
+# OpenSearch: BM25 keyword search over filing chunks. Single node, security on.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opensearch
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://opensearch-project.github.io/helm-charts
+    chart: opensearch
+    targetRevision: 3.9.0
+    helm:
+      valuesObject:
+        singleNode: true
+        replicas: 1
+        opensearchJavaOpts: "-Xms1g -Xmx1g"
+        resources:
+          requests: { cpu: 250m, memory: 2Gi }
+          limits: { memory: 2560Mi }
+        persistence:
+          enabled: true
+          storageClass: sentinel-data
+          size: 10Gi
+        nodeSelector:
+          workload: data
+        # The dev machine already sets vm.max_map_count (bootstrap.sh); no privileged init container needed.
+        sysctlInit:
+          enabled: false
+        # Security plugin stays on. The admin password comes from the Secret made by scripts/secrets.sh.
+        extraEnvs:
+          - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opensearch-admin
+                key: password
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

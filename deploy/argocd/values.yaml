@@ -11,3 +11,19 @@ configs:
   params:
     # TLS is terminated by kubectl port-forward locally; Istio takes over in Phase 5.
     server.insecure: true
+  cm:
+    # App-of-apps ordering: by default Argo CD treats a child Application as
+    # healthy as soon as it exists, so sync waves would not wait for, say,
+    # the monitoring CRDs before syncing the data stores. This makes a child
+    # Application report the real health of its resources.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil and obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+      return hs
