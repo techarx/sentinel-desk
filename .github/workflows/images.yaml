@@ -54,7 +54,8 @@ jobs:
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          sed -i "s/^    newTag: .*/    newTag: ${TAG}/" deploy/apps/db-migrate/kustomization.yaml
+          f=deploy/apps/db-migrate/kustomization.yaml
+          sed -i -e "s/^    newTag: .*/    newTag: ${TAG}/" -e "s/^      - image-tag=.*/      - image-tag=${TAG}/" "$f"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add deploy/apps/db-migrate/kustomization.yaml

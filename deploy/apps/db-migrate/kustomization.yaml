@@ -1,4 +1,4 @@
-# CI (.github/workflows/images.yaml) rewrites newTag after each image build.
+# CI (.github/workflows/images.yaml) rewrites BOTH tags below after each image build.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: data
@@ -7,3 +7,15 @@ resources:
 images:
   - name: ghcr.io/techarx/sentinel-db-migrate
     newTag: sha-7781860
+
+# Why this ConfigMap exists: the Job is an Argo CD sync hook, and Argo CD ignores
+# hooks when deciding whether an app is out of sync. An app containing only a
+# hook therefore always looks "Synced", auto-sync never runs, and the hook never
+# fires. This ordinary resource changes with every release, so a new tag makes
+# the app OutOfSync -> Argo CD syncs -> the migration Job runs.
+configMapGenerator:
+  - name: db-migrate-release
+    literals:
+      - image-tag=sha-7781860
+generatorOptions:
+  disableNameSuffixHash: true

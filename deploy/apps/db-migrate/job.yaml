@@ -1,8 +1,9 @@
 # Applies database migrations (alembic upgrade head).
 #
-# An Argo CD Sync hook: it runs on every sync of the db-migrate app, which
-# happens when CI commits a new image tag to kustomization.yaml. The previous
-# Job is deleted first (BeforeHookCreation) so the name can be reused.
+# An Argo CD Sync hook: it runs on every sync of the db-migrate app. CI commits
+# a new image tag to kustomization.yaml, which also changes the
+# db-migrate-release ConfigMap, so the app goes OutOfSync and syncs. The
+# previous Job is deleted first (BeforeHookCreation) so the name can be reused.
 apiVersion: batch/v1
 kind: Job
 metadata:
