@@ -1,0 +1,31 @@
+# Which companies Sentinel Desk may ingest or reference.
+# Read by ingest-edgar, seed-refdata and the trade generator; each one must
+# refuse to load anything matching `excluded`, and tests assert that.
+
+# Banks whose SEC filings are ingested (Phase 1). CIKs from
+# https://www.sec.gov/files/company_tickers.json; verify on first ingest.
+banks:
+  - { ticker: BAC, name: "Bank of America Corp" }
+  - { ticker: C,   name: "Citigroup Inc" }
+  - { ticker: WFC, name: "Wells Fargo & Co" }
+  - { ticker: GS,  name: "Goldman Sachs Group Inc" }
+  - { ticker: MS,  name: "Morgan Stanley" }
+  - { ticker: USB, name: "U.S. Bancorp" }
+  - { ticker: PNC, name: "PNC Financial Services Group Inc" }
+  - { ticker: TFC, name: "Truist Financial Corp" }
+  - { ticker: COF, name: "Capital One Financial Corp" }
+  - { ticker: BK,  name: "Bank of New York Mellon Corp" }
+
+# Project policy: nothing related to JPMorgan Chase is ingested, generated or
+# used as an example anywhere in this project. Matching is case-insensitive.
+excluded:
+  - reason: "Project policy: no JPMorgan Chase data"
+    tickers: [JPM]
+    ciks: ["19617"]
+    leis: ["8I5DZWZKVSZI1NUHU748"]   # JPMorgan Chase & Co.; GLEIF children of this LEI are excluded too
+    name_patterns:
+      - "jpmorgan"
+      - "jp morgan"
+      - "j.p. morgan"
+      - "chase bank"
+      - "chase manhattan"

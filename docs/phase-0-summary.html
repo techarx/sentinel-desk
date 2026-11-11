@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sentinel Desk — Phase 0</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  :root { --ink:#1f2328; --muted:#57606a; --line:#d0d7de; --soft:#f6f8fa; --accent:#534AB7; --teal:#0F6E56; --coral:#993C1D; --red:#A32D2D; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.5; margin: 0; background: #fff; }
+  h1 { font-size: 22pt; margin: 0 0 4px; font-weight: 600; }
+  h2 { font-size: 14.5pt; margin: 26px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); font-weight: 600; break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 16px 0 6px; font-weight: 600; break-after: avoid; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0; padding-left: 20px; }
+  li { margin: 2px 0; }
+  code { font-family: "SF Mono", Menlo, monospace; font-size: 9pt; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+  pre { font-family: "SF Mono", Menlo, monospace; font-size: 8.6pt; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; line-height: 1.45; white-space: pre-wrap; break-inside: avoid; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 9.6pt; break-inside: auto; }
+  th, td { text-align: left; vertical-align: top; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  th { background: var(--soft); font-weight: 600; }
+  tr { break-inside: avoid; }
+  .sub { color: var(--muted); font-size: 11pt; margin: 0 0 14px; }
+  .meta { color: var(--muted); font-size: 9pt; }
+  .callout { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: #fafaff; padding: 8px 12px; margin: 10px 0; break-inside: avoid; }
+  .warn { border-left-color: var(--red); background: #fff8f8; }
+  .ok { color: var(--teal); font-weight: 600; }
+  .bad { color: var(--red); font-weight: 600; }
+  figure { margin: 12px 0; break-inside: avoid; }
+  figcaption { color: var(--muted); font-size: 9pt; margin-top: 4px; }
+  .toc { columns: 2; font-size: 10pt; margin: 8px 0 0; }
+  .toc li { break-inside: avoid; }
+  .pb { break-before: page; }
+  .steps li { margin: 5px 0; }
+</style>
+</head>
+<body>
+
+<h1>Sentinel Desk — Phase 0: Foundations</h1>
+<p class="sub">Secure agentic RAG platform on Kubernetes · summary of the Phase 0 build and discussion</p>
+<p class="meta">Repository: github.com/techarx/sentinel-desk · Region: us-east-1 · Prepared 10 November 2026</p>
+
+<div class="callout">
+<b>Status.</b> The cluster side of Phase 0 is complete: <code>make up</code> builds the cluster from scratch, <code>make verify-gvisor</code> passes, and Argo CD shows <code>root</code> and <code>platform</code> as Synced / Healthy. The remaining item is a green GitHub Actions run after pushing the CI fix described in section 8.
+</div>
+
+<h3>Contents</h3>
+<ol class="toc">
+  <li>Project in one paragraph</li>
+  <li>AWS account readiness</li>
+  <li>What Phase 0 built</li>
+  <li>The dev machine (Terraform)</li>
+  <li>How the SSH connection works</li>
+  <li>The Makefile</li>
+  <li>Argo CD and GitOps</li>
+  <li>Problems hit and how they were fixed</li>
+  <li>Why the repo is cloned on the dev machine</li>
+  <li>Automating the bootstrap</li>
+  <li>Daily workflow and cost control</li>
+  <li>Next steps</li>
+</ol>
+
+<h2>1. Project in one paragraph</h2>
+<p>Sentinel Desk is a multi-agent research copilot for a fictional bank's markets desk. It answers questions over SEC filings and a live stream of synthetic trades, and when a question needs computation it writes Python and runs it inside a gVisor (or Kata) sandbox. The point of the project is to show that untrusted, LLM-generated code and adversarial documents can run next to sensitive financial data safely, through layered controls: sandboxing, mTLS, workload identity, fine-grained authorization and guardrails. The plan has nine phases over about ten weeks; Phase 0 lays the foundations everything else builds on.</p>
+
+<h2>2. AWS account readiness</h2>
+<p>The project uses a company-provided AWS lab account. Before building, the account was checked for the limits that most often block a project like this.</p>
+<table>
+  <tr><th>Check</th><th>Result</th><th>Why it matters</th></tr>
+  <tr><td>Running On-Demand Standard instances (L-1216C47A)</td><td class="ok">640 vCPUs</td><td>The default for new accounts is 5, which would block EKS and bare metal. 640 covers the project's peak of about 72 vCPUs.</td></tr>
+  <tr><td>All Standard Spot Instance Requests (L-34B43A08)</td><td class="ok">640 vCPUs</td><td>Separate pool from on-demand; needed if worker or bare-metal nodes use Spot.</td></tr>
+  <tr><td>Bare metal allowed (m5zn.metal)</td><td class="ok">Launched and terminated</td><td>Kata Containers / Firecracker need hardware virtualization. m5zn.metal (48 vCPU) is the smallest current x86 option.</td></tr>
+  <tr><td>IAM role creation</td><td class="ok">Passed</td><td>EKS, node groups, Pod Identity and the dev machine all need IAM roles.</td></tr>
+  <tr><td>VPCs and internet gateways per region</td><td class="ok">Raised from 5 to 7</td><td>The region already had 5 of each, so the project's own VPC could not be created until the limit was raised.</td></tr>
+</table>
+<h3>Spot instances in brief</h3>
+<p>Spot instances are AWS's spare capacity sold at a large discount (often 60–90%), in exchange for AWS being able to reclaim them with two minutes' warning. They suit short, stateless workloads such as sandbox nodes and test sessions. They suit data stores and recorded demos less well. In Terraform, an EKS managed node group becomes Spot with <code>capacity_type = "SPOT"</code>; listing several instance types improves the chance of getting capacity.</p>
+
+<h2>3. What Phase 0 built</h2>
+<ol>
+  <li>A <b>Linux dev machine in AWS</b>, created by Terraform, with no open inbound ports.</li>
+  <li>A <b>secure way into it</b> from the Mac: SSH tunnelled through AWS Systems Manager (SSM).</li>
+  <li>A <b>3-node Kubernetes cluster</b> (kind) on that machine, with one node reserved for sandboxed code.</li>
+  <li><b>gVisor</b> wired into that node, plus a test proving pods there really run inside the sandbox.</li>
+  <li><b>Argo CD</b>, which keeps the cluster in sync with the GitHub repository (GitOps, app-of-apps).</li>
+  <li><b>GitHub Actions CI</b>, a <b>Makefile</b> that ties it all together, and <b>ADR-001</b> recording the stack decisions.</li>
+</ol>
+
+<figure>
+<svg viewBox="0 0 680 330" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, Helvetica Neue, Arial, sans-serif">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5"/></marker></defs>
+  <rect x="10" y="10" width="170" height="250" rx="10" fill="none" stroke="#8c959f" stroke-dasharray="4 4"/>
+  <text x="95" y="34" text-anchor="middle" font-size="13" font-weight="600" fill="#1f2328">Your Mac</text>
+  <rect x="25" y="50" width="140" height="36" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="95" y="73" text-anchor="middle" font-size="11" fill="#3C3489">Editor + git</text>
+  <rect x="25" y="100" width="140" height="36" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="95" y="123" text-anchor="middle" font-size="11" fill="#3C3489">terraform (make devbox-up)</text>
+  <rect x="25" y="150" width="140" height="36" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="95" y="173" text-anchor="middle" font-size="11" fill="#3C3489">ssh sentinel-devbox</text>
+
+  <rect x="230" y="10" width="440" height="310" rx="10" fill="none" stroke="#8c959f" stroke-dasharray="4 4"/>
+  <text x="450" y="34" text-anchor="middle" font-size="13" font-weight="600" fill="#1f2328">AWS us-east-1 · VPC 10.40.0.0/16</text>
+  <rect x="250" y="50" width="400" height="30" rx="6" fill="#FAECE7" stroke="#993C1D" stroke-width="0.6"/><text x="450" y="70" text-anchor="middle" font-size="11" fill="#712B13">Internet gateway → route table → public subnet → security group (no inbound)</text>
+  <rect x="250" y="95" width="400" height="215" rx="8" fill="#F6F8FA" stroke="#8c959f" stroke-width="0.6"/>
+  <text x="265" y="116" font-size="12" font-weight="600" fill="#1f2328">EC2 dev machine · Ubuntu 24.04 · r6i.2xlarge</text>
+  <rect x="265" y="128" width="170" height="32" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="350" y="148" text-anchor="middle" font-size="11" fill="#3C3489">SSM agent (dials out)</text>
+  <rect x="265" y="168" width="170" height="32" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="350" y="188" text-anchor="middle" font-size="11" fill="#3C3489">bootstrap.sh toolchain</text>
+  <rect x="450" y="128" width="185" height="170" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.6"/>
+  <text x="542" y="147" text-anchor="middle" font-size="12" font-weight="600" fill="#085041">kind cluster "sentinel"</text>
+  <rect x="462" y="158" width="161" height="30" rx="5" fill="#ffffff" stroke="#0F6E56" stroke-width="0.6"/><text x="542" y="177" text-anchor="middle" font-size="10.5" fill="#085041">control-plane</text>
+  <rect x="462" y="196" width="161" height="40" rx="5" fill="#ffffff" stroke="#0F6E56" stroke-width="0.6"/><text x="542" y="213" text-anchor="middle" font-size="10.5" fill="#085041">worker · general</text><text x="542" y="228" text-anchor="middle" font-size="9.5" fill="#0F6E56">Argo CD, later apps</text>
+  <rect x="462" y="244" width="161" height="44" rx="5" fill="#ffffff" stroke="#0F6E56" stroke-width="0.6"/><text x="542" y="262" text-anchor="middle" font-size="10.5" fill="#085041">worker2 · sandbox=true</text><text x="542" y="278" text-anchor="middle" font-size="9.5" fill="#0F6E56">tainted · gVisor runsc</text>
+  <rect x="265" y="208" width="170" height="32" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="350" y="228" text-anchor="middle" font-size="11" fill="#3C3489">Docker</text>
+
+  <rect x="25" y="280" width="140" height="36" rx="6" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.6"/><text x="95" y="303" text-anchor="middle" font-size="11" fill="#633806">GitHub repo + CI</text>
+  <line x1="165" y1="118" x2="246" y2="80" stroke="#534AB7" stroke-width="1.2" marker-end="url(#ar)"/>
+  <line x1="165" y1="168" x2="262" y2="144" stroke="#0F6E56" stroke-width="2.5" marker-end="url(#ar)"/>
+  <line x1="95" y1="86" x2="95" y2="96" stroke="#fff"/>
+  <path d="M95 186 L95 276" fill="none" stroke="#854F0B" stroke-width="1.2" marker-end="url(#ar)"/>
+  <path d="M460 298 L460 310 L190 310 L169 302" fill="none" stroke="#854F0B" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+</svg>
+<figcaption>Figure 1. Phase 0 layout. Purple: your tools and the dev machine's services. Teal: Kubernetes. Coral: AWS networking. Amber: GitHub; the dashed line is Argo CD pulling from the repo.</figcaption>
+</figure>
+
+<h2>4. The dev machine (Terraform)</h2>
+<p>Files live in <code>infra/devbox/</code>. Terraform describes infrastructure as code; <code>terraform apply</code> makes AWS match the description.</p>
+<table>
+  <tr><th>Resource</th><th>Why it exists</th></tr>
+  <tr><td>VPC + public subnet</td><td>The project's own isolated network; it never touches other teams' VPCs.</td></tr>
+  <tr><td>Internet gateway + route table</td><td>Allows <i>outbound</i> traffic: package installs, image pulls and the SSM connection. Without the route, nothing works.</td></tr>
+  <tr><td>Security group, no inbound rules</td><td>Nothing on the internet can open a connection to the machine.</td></tr>
+  <tr><td>IAM role (AmazonSSMManagedInstanceCore only)</td><td>Lets the machine register with SSM and nothing else.</td></tr>
+  <tr><td>IMDSv2, hop limit 1</td><td>Containers on the machine cannot read its AWS credentials from the metadata service (an attack revisited in Phase 4).</td></tr>
+  <tr><td>Encrypted gp3 disk (150 GB)</td><td>Encryption at rest; room for images and data stores.</td></tr>
+  <tr><td>AWS Budget with alerts</td><td>Emails at 50%, 80% and 100% of the monthly limit, plus a forecast alert.</td></tr>
+  <tr><td>default_tags</td><td>Every resource gets <code>Project=sentinel-desk</code> for finding and costing it. Activate the tag under Billing → Cost allocation tags so the budget filter matches.</td></tr>
+</table>
+<p>On first boot the machine runs <b>user data</b> (<code>user-data.sh.tftpl</code>): it installs your SSH public key into <code>authorized_keys</code>, then runs <code>bootstrap.sh</code>, which installs Docker, gVisor (<code>runsc</code>), kind, kubectl, helm and the argocd CLI, logging to <code>/var/log/sentinel-bootstrap.log</code>.</p>
+
+<h2 class="pb">5. How the SSH connection works</h2>
+<p>SSH reaches the dev machine even though port 22 is closed to the world. The trick is that <b>no connection ever comes in</b>: both your Mac and the dev machine connect <i>out</i> to AWS, and AWS joins the two connections into a tunnel.</p>
+
+<figure>
+<svg viewBox="0 0 680 360" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, Helvetica Neue, Arial, sans-serif">
+  <defs><marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5"/></marker></defs>
+  <rect x="30" y="20" width="190" height="320" rx="12" fill="none" stroke="#8c959f" stroke-dasharray="4 4"/>
+  <text x="125" y="44" text-anchor="middle" font-size="13" font-weight="600" fill="#1f2328">Your Mac</text>
+  <text x="125" y="61" text-anchor="middle" font-size="10.5" fill="#57606a">adfs profile + SSH key</text>
+  <rect x="245" y="20" width="190" height="320" rx="12" fill="none" stroke="#8c959f" stroke-dasharray="4 4"/>
+  <text x="340" y="44" text-anchor="middle" font-size="13" font-weight="600" fill="#1f2328">AWS</text>
+  <text x="340" y="61" text-anchor="middle" font-size="10.5" fill="#57606a">us-east-1</text>
+  <rect x="460" y="20" width="190" height="320" rx="12" fill="none" stroke="#8c959f" stroke-dasharray="4 4"/>
+  <text x="555" y="44" text-anchor="middle" font-size="13" font-weight="600" fill="#1f2328">Dev machine</text>
+  <text x="555" y="61" text-anchor="middle" font-size="10.5" fill="#57606a">No inbound ports</text>
+  <text x="555" y="122" text-anchor="middle" font-size="10.5" fill="#A32D2D">Internet cannot connect in</text>
+
+  <rect x="45" y="80" width="160" height="44" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="125" y="106" text-anchor="middle" font-size="12" font-weight="600" fill="#3C3489">ssh client</text>
+  <rect x="45" y="160" width="160" height="44" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="125" y="186" text-anchor="middle" font-size="11.5" font-weight="600" fill="#3C3489">aws ssm start-session</text>
+  <rect x="45" y="240" width="160" height="44" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="125" y="266" text-anchor="middle" font-size="11" font-weight="600" fill="#3C3489">Session Manager plugin</text>
+
+  <rect x="260" y="150" width="160" height="56" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.6"/><text x="340" y="173" text-anchor="middle" font-size="12" font-weight="600" fill="#712B13">SSM service</text><text x="340" y="191" text-anchor="middle" font-size="10.5" fill="#993C1D">IAM check, relay</text>
+  <rect x="260" y="240" width="160" height="44" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.6"/><text x="340" y="266" text-anchor="middle" font-size="12" font-weight="600" fill="#712B13">CloudTrail log</text>
+
+  <rect x="475" y="150" width="160" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="555" y="173" text-anchor="middle" font-size="12" font-weight="600" fill="#3C3489">SSM agent</text><text x="555" y="191" text-anchor="middle" font-size="10.5" fill="#534AB7">Outbound HTTPS only</text>
+  <rect x="475" y="240" width="160" height="44" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/><text x="555" y="266" text-anchor="middle" font-size="12" font-weight="600" fill="#3C3489">sshd on port 22</text>
+
+  <line x1="473" y1="160" x2="424" y2="160" stroke="#D85A30" stroke-width="1.5" marker-end="url(#a2)"/>
+  <text x="448" y="140" text-anchor="middle" font-size="10" fill="#993C1D">①</text>
+  <line x1="125" y1="126" x2="125" y2="156" stroke="#57606a" stroke-width="1.2" marker-end="url(#a2)"/>
+  <line x1="125" y1="206" x2="125" y2="236" stroke="#57606a" stroke-width="1.2" marker-end="url(#a2)"/>
+  <text x="140" y="146" font-size="10" fill="#57606a">②</text>
+  <path d="M207 262 L232 262 L232 194 L256 194" fill="none" stroke="#7F77DD" stroke-width="1.5" marker-end="url(#a2)"/>
+  <line x1="340" y1="208" x2="340" y2="236" stroke="#57606a" stroke-width="1.2" marker-end="url(#a2)"/>
+  <text x="352" y="226" font-size="10" fill="#57606a">③</text>
+  <path d="M207 276 L240 276 L240 214 L258 214" fill="none" stroke="#1D9E75" stroke-width="4" marker-start="url(#a2)" marker-end="url(#a2)"/>
+  <line x1="424" y1="196" x2="471" y2="196" stroke="#1D9E75" stroke-width="4" marker-start="url(#a2)" marker-end="url(#a2)"/>
+  <line x1="555" y1="208" x2="555" y2="236" stroke="#1D9E75" stroke-width="4" marker-end="url(#a2)"/>
+  <text x="448" y="226" text-anchor="middle" font-size="10" fill="#0F6E56">④</text>
+  <path d="M125 286 L125 298 L555 298 L555 288" fill="none" stroke="#1D9E75" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a2)"/>
+  <text x="340" y="320" text-anchor="middle" font-size="10" fill="#0F6E56">⑤ SSH login runs in the tunnel</text>
+</svg>
+<figcaption>Figure 2. SSH over SSM. Coral arrow: the agent's outbound connection. Thick teal: the joined tunnel. Dashed teal: the SSH session that runs inside it. Numbers match the steps below.</figcaption>
+</figure>
+
+<ol class="steps">
+  <li value="0"><b>The door is locked.</b> The security group allows no inbound traffic. Nothing on the internet, including you, can open a connection to the dev machine.</li>
+  <li><b>The agent dials out.</b> At boot, the SSM agent uses the instance's IAM role to open an outbound HTTPS connection to <code>ssm.us-east-1.amazonaws.com</code> and keeps it open. This is why the missing internet route caused <code>TargetNotConnected</code>: with no route out, AWS had no connection to relay through.</li>
+  <li><b>ssh hands off to the AWS CLI.</b> <code>ssh sentinel-devbox</code> reads <code>~/.ssh/config</code>. Instead of dialling an IP address, its <code>ProxyCommand</code> runs <code>aws ssm start-session --document-name AWS-StartSSHSession</code>, and the Session Manager plugin carries the data.</li>
+  <li><b>AWS checks who you are.</b> The request is signed with your <code>adfs</code> credentials. SSM checks IAM to decide whether you may open a session to this instance; CloudTrail records who connected, when and to what.</li>
+  <li><b>The tunnel is joined.</b> SSM connects your session to the agent's already-open connection. The agent forwards bytes to <code>localhost:22</code> on the machine.</li>
+  <li><b>Normal SSH runs inside it.</b> ssh performs its usual handshake through the tunnel and logs in with your private key, which matches the public key that user data placed in <code>authorized_keys</code>.</li>
+</ol>
+
+<h3>The SSH config block</h3>
+<pre>Host sentinel-devbox
+  HostName i-xxxxxxxxxxxxxxxxx        # the instance ID, not an IP address
+  User ubuntu
+  IdentityFile ~/.ssh/id_ed25519
+  ProxyCommand sh -c "aws ssm start-session --region us-east-1 --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
+  ServerAliveInterval 60</pre>
+<p><code>make devbox-ssh-config</code> prints this block with the real instance ID. Because the profile is <code>adfs</code>, either run <code>export AWS_PROFILE=adfs</code> in the terminal first, or add <code>--profile adfs</code> after <code>start-session</code> in the ProxyCommand.</p>
+
+<div class="callout">
+<b>Why this design matters.</b> Two locks instead of one: valid AWS credentials <i>and</i> the SSH key. No open port to scan or attack, and every session is logged. It is the zero-trust approach the whole project is built on, and a strong interview answer to "how do you reach private servers?"
+</div>
+
+<h3>Prerequisites on the Mac</h3>
+<ul>
+  <li>AWS CLI with working credentials (<code>adfs</code> profile).</li>
+  <li>Session Manager plugin: <code>brew install --cask session-manager-plugin</code>, or AWS's signed installer. Check with <code>session-manager-plugin</code>.</li>
+  <li>An SSH key pair (<code>ssh-keygen -t ed25519</code>); the public key goes in <code>terraform.tfvars</code>.</li>
+</ul>
+
+<h2 class="pb">6. The Makefile</h2>
+<p><code>make</code> runs named groups of commands called <b>targets</b>. <code>make up</code> runs whatever is defined under <code>up:</code>.</p>
+<h3>Why it matters</h3>
+<ul>
+  <li><b>One command instead of fifteen.</b> It replaces a long sequence of kind, kubectl and helm commands that must run in the right order.</li>
+  <li><b>Reproducible.</b> The same command builds the same cluster every time, which is Phase 0's "done when" criterion.</li>
+  <li><b>Documentation that cannot go stale.</b> The Makefile is the instructions; <code>make help</code> lists every target from the <code>##</code> comments.</li>
+  <li><b>Shared vocabulary.</b> The README, you, Claude and later CI all use the same commands.</li>
+</ul>
+<h3>How make up works</h3>
+<pre>up: cluster gvisor platform argocd</pre>
+<table>
+  <tr><th>Target</th><th>What it does</th></tr>
+  <tr><td><code>cluster</code></td><td>Creates the kind cluster from <code>deploy/kind/cluster.yaml</code>. Skips if the cluster already exists, so re-running is safe.</td></tr>
+  <tr><td><code>gvisor</code></td><td>Runs <code>install-gvisor.sh</code>: registers <code>runsc</code> with containerd on the sandbox node (detecting containerd 1.x vs 2.x config keys) and restarts containerd.</td></tr>
+  <tr><td><code>platform</code></td><td><code>kubectl apply -f deploy/platform/</code>: namespaces (Pod Security "restricted") and the <code>gvisor</code> RuntimeClass, so the cluster is usable before Argo CD syncs.</td></tr>
+  <tr><td><code>argocd</code></td><td>Installs Argo CD with <code>helm upgrade --install</code> (create or update), then applies the root app.</td></tr>
+</table>
+<h3>All targets</h3>
+<table>
+  <tr><th>Where</th><th>Target</th><th>Purpose</th></tr>
+  <tr><td>Mac</td><td><code>devbox-up</code> / <code>devbox-down</code></td><td>Create or destroy the dev machine, VPC and budget.</td></tr>
+  <tr><td>Mac</td><td><code>devbox-stop</code> / <code>devbox-start</code></td><td>Stop compute billing between sessions; start again.</td></tr>
+  <tr><td>Mac</td><td><code>devbox-ssh-config</code></td><td>Print the SSH config block.</td></tr>
+  <tr><td>Dev machine</td><td><code>up</code> / <code>down</code></td><td>Build or delete the whole cluster.</td></tr>
+  <tr><td>Dev machine</td><td><code>verify-gvisor</code></td><td>Run a test pod under gVisor and check it sees gVisor's kernel, not the host's.</td></tr>
+  <tr><td>Dev machine</td><td><code>status</code>, <code>argocd-ui</code></td><td>Show nodes, RuntimeClass and apps; port-forward the Argo CD UI.</td></tr>
+  <tr><td>Either</td><td><code>set-repo</code>, <code>lint</code>, <code>help</code></td><td>Point Argo CD at the repo; run CI checks locally; list targets.</td></tr>
+</table>
+<h3>Details worth knowing</h3>
+<ul>
+  <li><b><code>$$</code> instead of <code>$</code>.</b> make uses <code>$</code> for its own variables, so shell variables in recipes are written <code>$$var</code>.</li>
+  <li><b><code>.SHELLFLAGS := -eo pipefail -c</code>.</b> Stop at the first failing command, including failures inside pipes. <code>-u</code> was removed because over SSH bash reads <code>/etc/bash.bashrc</code>, which references the unset <code>PS1</code>.</li>
+  <li><b>Idempotent.</b> Most targets check before acting, so re-running <code>make up</code> repairs drift instead of breaking things.</li>
+</ul>
+
+<h2>7. Argo CD and GitOps</h2>
+<p><b>GitOps</b> means Git is the source of truth for the cluster. Changes are committed, not applied by hand; a controller inside the cluster applies them.</p>
+<ul>
+  <li>The <b>root app</b> (<code>deploy/argocd/root-app.yaml</code>) watches <code>deploy/argocd/apps/</code>. Every file there is another Argo CD app.</li>
+  <li>Today there is one child, <b>platform</b>, which watches <code>deploy/platform/</code>.</li>
+  <li>To add a component later (Postgres in Phase 1, Istio in Phase 5), add one file to <code>deploy/argocd/apps/</code> and push.</li>
+  <li><code>selfHeal: true</code> reverts manual changes to match Git; <code>prune: true</code> removes resources whose files were deleted.</li>
+  <li>"Synced / Healthy" on both apps means the cluster matches Git exactly and everything is running.</li>
+</ul>
+
+<h2>8. Problems hit and how they were fixed</h2>
+<table>
+  <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+  <tr><td><code>TargetNotConnected</code> when SSHing; bootstrap failed</td><td>The Terraform had been pointed at the existing MWAAEnvironment VPC. Its only route table had just the local route, so the instance had no path to the internet: the SSM agent timed out reaching AWS and package installs failed.</td><td>Raised the VPC and internet gateway limits to 7 and restored the project's own VPC, subnet, internet gateway and route table. The MWAA VPC was left untouched.</td></tr>
+  <tr><td><code>make: No rule to make target</code></td><td>make was run outside the project folder.</td><td>Run make from <code>~/code/projects/sentinel-desk</code> (Mac) or <code>~/sentinel-desk</code> (dev machine).</td></tr>
+  <tr><td>gVisor test pod stuck in ContainerCreating</td><td>Recent runsc releases need helper binaries (<code>gvisor_sentry</code> and others) in a <code>gvisor-bin/</code> folder beside runsc; only runsc and the shim had been mounted into the kind node.</td><td>Added <code>/usr/bin/gvisor-bin</code> as an extra mount in <code>cluster.yaml</code> and a check in <code>install-gvisor.sh</code>; recreated the cluster.</td></tr>
+  <tr><td>Test reported FAIL although the pod ran</td><td>The check looked for gVisor's old kernel string <code>4.4.0</code>; this release reports <code>4.19.0-gvisor</code>.</td><td>The check now passes when the pod reports a gVisor kernel different from the host's (host: <code>7.0.0-1014-aws</code>).</td></tr>
+  <tr><td><code>PS1: unbound variable</code> noise</td><td>The strict <code>-u</code> shell flag combined with bash reading <code>/etc/bash.bashrc</code> over SSH.</td><td>Removed <code>-u</code> from the Makefile's shell flags.</td></tr>
+  <tr><td>CI failed before any job started</td><td><code>hashFiles()</code> was used in a job-level <code>if:</code>; GitHub only allows it at step level, so it rejected the workflow file.</td><td>Moved the condition onto the ruff step. Needs a push to confirm a green run.</td></tr>
+</table>
+<div class="callout warn">
+<b>Mac vs dev machine.</b> All code edits happen on the Mac; the dev machine gets them through <code>git pull</code>. <code>git checkout -- .</code> discards uncommitted changes, so only run it on the dev machine, never in the Mac's project folder. A prompt of <code>mazeez@…</code> is the Mac; <code>ubuntu@ip-10-40-…</code> is the dev machine.
+</div>
+
+<h2>9. Why the repo is cloned on the dev machine</h2>
+<p>Argo CD exists only <i>after</i> the cluster does, so something has to build the cluster first. This is the classic <b>bootstrap problem</b>: GitOps cannot install the thing that does GitOps. <code>make up</code> needs these files locally where kind runs:</p>
+<ul>
+  <li><code>deploy/kind/cluster.yaml</code> to create the cluster;</li>
+  <li><code>deploy/kind/install-gvisor.sh</code> to set up gVisor;</li>
+  <li><code>deploy/platform/*.yaml</code> for the first apply;</li>
+  <li><code>deploy/argocd/values.yaml</code> and <code>root-app.yaml</code> to install Argo CD and hand over to it.</li>
+</ul>
+<p>After the hand-over, Argo CD pulls everything else from GitHub itself. The clone is needed only for bootstrapping and running make commands.</p>
+
+<h2>10. Automating the bootstrap</h2>
+<table>
+  <tr><th>Level</th><th>How</th><th>Result</th></tr>
+  <tr><td>1. Remote targets</td><td>Makefile targets such as <code>make remote-up</code> that SSH in and run <code>git pull &amp;&amp; make up</code>.</td><td>No manual login; you still trigger it.</td></tr>
+  <tr><td>2. First-boot bootstrap (recommended next)</td><td>Extend user data: after <code>bootstrap.sh</code>, clone the repo as <code>ubuntu</code> and run <code>make up &amp;&amp; make verify-gvisor</code>.</td><td><code>make devbox-up</code> alone yields a working cluster with Argo CD. Needs a public repo or a read-only GitHub token in Secrets Manager.</td></tr>
+  <tr><td>3. Target state (Phase 8, EKS)</td><td>Terraform creates EKS, then its Helm provider installs Argo CD and applies the root app.</td><td>No dev machine or clone in the loop; the industry-standard pattern.</td></tr>
+</table>
+
+<h2>11. Daily workflow and cost control</h2>
+<ol>
+  <li><b>Start:</b> <code>export AWS_PROFILE=adfs</code>, then <code>make devbox-start</code> on the Mac.</li>
+  <li><b>Edit</b> on the Mac; commit and push.</li>
+  <li><b>Apply</b> on the dev machine: <code>ssh sentinel-devbox</code>, <code>cd ~/sentinel-desk &amp;&amp; git pull</code>, then make targets.</li>
+  <li><b>Stop:</b> <code>make devbox-stop</code> at the end of every session (disk only is billed while stopped).</li>
+</ol>
+<ul>
+  <li>The budget alert covers everything tagged <code>Project=sentinel-desk</code>.</li>
+  <li>Bare-metal sessions: scale up, test, and destroy the same day; terminated metal instances can take 5–10 minutes to shut down. Check EC2 → Volumes afterwards for leftovers.</li>
+  <li><code>make devbox-down</code> removes the dev machine and its VPC entirely.</li>
+</ul>
+
+<h2>12. Next steps</h2>
+<ol>
+  <li>Push the CI fix and confirm four green jobs (terraform, shell, manifests, python) under GitHub → Actions. That closes Phase 0.</li>
+  <li>Optionally implement Level 2 automation (first-boot bootstrap) and <code>remote-*</code> targets.</li>
+  <li>Phase 1 — data layer and real-time ingestion: Postgres + pgvector (CloudNativePG), OpenSearch, Redis Streams, Neo4j; EDGAR ingestion of 10-Ks for 8–10 banks; synthetic trade stream at about 100 events per second. Done when 50+ filings are searchable and stream lag stays under 5 seconds for an hour.</li>
+</ol>
+
+<h3>Data sources for Phase 1</h3>
+<table>
+  <tr><th>Data</th><th>Source</th></tr>
+  <tr><td>10-K / 10-Q filings</td><td>SEC EDGAR: <code>company_tickers.json</code> for CIKs, <code>data.sec.gov/submissions/</code> for filing lists. Send a User-Agent with contact details; stay under 10 requests per second.</td></tr>
+  <tr><td>Ground-truth financials</td><td>EDGAR XBRL <code>companyfacts</code> API (for example net interest income) to check answers in the golden set.</td></tr>
+  <tr><td>Counterparty entities</td><td>GLEIF legal entity data (free), giving real parent/subsidiary links for the Neo4j graph.</td></tr>
+  <tr><td>Trades, customers, PII</td><td>Synthetic, generated with Faker.</td></tr>
+  <tr><td>Prompt-injection training data (Phase 6)</td><td>Hugging Face: deepset/prompt-injections, jackhhao/jailbreak-classification; Microsoft BIPIA for indirect injection; plus 200 hand-written examples.</td></tr>
+</table>
+
+</body>
+</html>

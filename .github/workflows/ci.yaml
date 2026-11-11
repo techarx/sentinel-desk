@@ -38,9 +38,10 @@ jobs:
 
   python:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('**/*.py') != '' }}
     steps:
       - uses: actions/checkout@v4
+      # hashFiles() is only allowed at step level, so the skip-when-no-Python check lives here.
       - uses: astral-sh/ruff-action@v3
+        if: ${{ hashFiles('**/*.py') != '' }}
 
   # Added in later phases: golangci-lint (sidecar-go), eslint (ui), image build + Trivy + cosign, eval gate.

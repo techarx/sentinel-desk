@@ -14,12 +14,17 @@ echo "==> Base packages"
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg git make jq unzip python3-venv shellcheck
 
-echo "==> Kernel settings kind needs for many pods (inotify limits)"
+echo "==> Kernel settings: inotify limits for kind, mmap count for OpenSearch"
 cat > /etc/sysctl.d/99-kind.conf <<'EOF'
 fs.inotify.max_user_watches = 524288
 fs.inotify.max_user_instances = 512
+# OpenSearch refuses to start below 262144. kind nodes share this kernel.
+vm.max_map_count = 262144
 EOF
 sysctl --system >/dev/null
+
+echo "==> Persistent data folder for the kind data node (survives make down)"
+install -d -m 0755 /var/lib/sentinel-data
 
 echo "==> Docker (official apt repo)"
 install -m 0755 -d /etc/apt/keyrings

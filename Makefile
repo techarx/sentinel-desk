@@ -93,10 +93,29 @@ verify-gvisor: ## Run a pod under gVisor and check it reports gVisor's kernel
 	else echo "FAIL: pod did not run under gVisor"; exit 1; fi
 	kubectl delete pod -n sandbox gvisor-smoke
 
+.PHONY: verify-storage
+verify-storage: ## Write (first run) or find (later runs) a marker on persistent storage
+	kubectl delete pod -n data storage-smoke --ignore-not-found
+	kubectl apply -f deploy/tests/storage-smoke.yaml
+	kubectl wait -n data --for=jsonpath='{.status.phase}'=Succeeded pod/storage-smoke --timeout=120s
+	kubectl logs -n data storage-smoke
+	kubectl delete pod -n data storage-smoke
+	@echo "Run 'make down && make up && make verify-storage': it should print FOUND with the same time."
+
+DATA_DIR := /var/lib/sentinel-data
+
+.PHONY: data-reset
+data-reset: ## DELETE all persistent data (Postgres, OpenSearch, Redis, Neo4j). Needs CONFIRM=yes
+	@test "$(CONFIRM)" = "yes" || { echo "This deletes everything under $(DATA_DIR). Re-run with CONFIRM=yes"; exit 1; }
+	@if kind get clusters 2>/dev/null | grep -qx $(CLUSTER); then echo "Run 'make down' first so no database is using the files."; exit 1; fi
+	sudo find $(DATA_DIR) -mindepth 1 -delete
+	@echo "Data wiped. 'make up' starts with empty stores."
+
 .PHONY: status
 status: ## Show nodes, Argo CD apps and the RuntimeClass
 	kubectl get nodes -L sandbox,workload
 	kubectl get runtimeclass
+	kubectl get storageclass
 	kubectl -n $(ARGOCD_NS) get applications 2>/dev/null || true
 
 # ---------------------------------------------------------------------------

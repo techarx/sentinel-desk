@@ -1,0 +1,22 @@
+# Persistent storage for the data stores in kind.
+#
+# - Uses kind's built-in local-path provisioner.
+# - pathPattern gives every PVC a fixed folder (<namespace>/<pvc-name>) instead
+#   of a random one, so a PVC with the same name finds its old data after the
+#   cluster is recreated.
+# - Retain: deleting a PVC never deletes the data; `make data-reset` does.
+# - WaitForFirstConsumer + allowedTopologies: volumes are always created on the
+#   data node, whose storage folder is mounted from the dev machine.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sentinel-data
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}"
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: workload
+        values: ["data"]
