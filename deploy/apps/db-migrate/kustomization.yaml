@@ -6,4 +6,4 @@ resources:
   - job.yaml
 images:
   - name: ghcr.io/techarx/sentinel-db-migrate
-    newTag: main
+    newTag: sha-7781860
