@@ -1,9 +1,11 @@
-# Which companies Sentinel Desk may ingest or reference.
-# Read by ingest-edgar, seed-refdata and the trade generator; each one must
-# refuse to load anything matching `excluded`, and tests assert that.
+# The only real-world entities Sentinel Desk may ingest or reference.
+#
+# This is an ALLOWLIST: anything not listed here is never loaded.
+# ingest-edgar, seed-refdata and the trade generator read this file, and tests
+# assert that every real filing and counterparty traces back to an entry below.
 
-# Banks whose SEC filings are ingested (Phase 1). CIKs from
-# https://www.sec.gov/files/company_tickers.json; verify on first ingest.
+# Banks whose SEC filings are ingested (Phase 1). CIKs come from
+# https://www.sec.gov/files/company_tickers.json at ingest time.
 banks:
   - { ticker: BAC, name: "Bank of America Corp" }
   - { ticker: C,   name: "Citigroup Inc" }
@@ -16,16 +18,15 @@ banks:
   - { ticker: COF, name: "Capital One Financial Corp" }
   - { ticker: BK,  name: "Bank of New York Mellon Corp" }
 
-# Project policy: nothing related to JPMorgan Chase is ingested, generated or
-# used as an example anywhere in this project. Matching is case-insensitive.
-excluded:
-  - reason: "Project policy: no JPMorgan Chase data"
-    tickers: [JPM]
-    ciks: ["19617"]
-    leis: ["8I5DZWZKVSZI1NUHU748"]   # JPMorgan Chase & Co.; GLEIF children of this LEI are excluded too
-    name_patterns:
-      - "jpmorgan"
-      - "jp morgan"
-      - "j.p. morgan"
-      - "chase bank"
-      - "chase manhattan"
+# Where counterparties for the synthetic trade book come from.
+counterparties:
+  # Real entities: only GLEIF subsidiaries of the banks listed above.
+  real:
+    source: gleif
+    scope: subsidiaries_of_banks
+    max_per_bank: 15
+  # Everything else is fictional, generated with Faker (fixed seed).
+  fictional:
+    count: 150
+    kinds: [hedge_fund, asset_manager, corporate, insurer, pension_fund]
+    seed: 42
