@@ -40,6 +40,14 @@ apply_secret data pg-app-credentials --type=kubernetes.io/basic-auth \
   --from-literal=username=sentinel \
   --from-literal=password="$(get_or_create postgres-app)"
 
+# Login roles managed by CloudNativePG (deploy/data/postgres/cluster.yaml).
+# CNPG requires basic-auth Secrets whose username matches the role name.
+for role in ingest_writer stream_writer readonly_analyst; do
+  apply_secret data "pg-role-${role//_/-}" --type=kubernetes.io/basic-auth \
+    --from-literal=username="${role}" \
+    --from-literal=password="$(get_or_create "postgres-${role}")"
+done
+
 apply_secret data opensearch-admin \
   --from-literal=password="$(get_or_create opensearch-admin)"
 

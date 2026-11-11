@@ -1,0 +1,55 @@
+# Applies database migrations (alembic upgrade head).
+#
+# An Argo CD Sync hook: it runs on every sync of the db-migrate app, which
+# happens when CI commits a new image tag to kustomization.yaml. The previous
+# Job is deleted first (BeforeHookCreation) so the name can be reused.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app: db-migrate
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        workload: general
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: ghcr.io/techarx/sentinel-db-migrate   # tag set by kustomization.yaml
+          args: ["upgrade", "head"]
+          env:
+            - name: PGHOST
+              value: sentinel-pg-rw   # CloudNativePG's read-write service
+            - name: PGDATABASE
+              value: sentinel
+            - name: PGSSLMODE
+              value: require
+            # The schema owner runs migrations; services connect as their own roles.
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef: { name: pg-app-credentials, key: username }
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: { name: pg-app-credentials, key: password }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

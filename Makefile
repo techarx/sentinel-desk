@@ -106,6 +106,29 @@ verify-storage: ## Write (first run) or find (later runs) a marker on persistent
 	kubectl delete pod -n data storage-smoke
 	@echo "Run 'make down && make up && make verify-storage': it should print FOUND with the same time."
 
+# ---------------------------------------------------------------------------
+##@ Database (run on the dev machine)
+# ---------------------------------------------------------------------------
+
+.PHONY: db-test
+db-test: ## Test migrations against a throwaway Postgres in Docker (same as CI)
+	./scripts/db-test.sh
+
+.PHONY: er-diagram
+er-diagram: ## Regenerate docs/data-model.md (Mermaid ER diagram) from the migrations
+	ER_OUT=docs/data-model.md ./scripts/db-test.sh
+
+.PHONY: psql
+psql: ## Open psql in the cluster as the schema owner
+	kubectl -n data exec -it sentinel-pg-1 -c postgres -- \
+	  env PGPASSWORD="$$(kubectl -n data get secret pg-app-credentials -o jsonpath='{.data.password}' | base64 -d)" \
+	  psql -h sentinel-pg-rw -U sentinel -d sentinel
+
+.PHONY: db-status
+db-status: ## Show the applied migration and the db-migrate Job's last run
+	@kubectl -n data exec sentinel-pg-1 -c postgres -- psql -U postgres -d sentinel -tAc "select 'revision: ' || version_num from alembic_version" 2>/dev/null || echo "no migrations applied yet"
+	@kubectl -n data get job db-migrate -o custom-columns=JOB:.metadata.name,COMPLETIONS:.status.succeeded,FAILED:.status.failed,IMAGE:.spec.template.spec.containers[0].image 2>/dev/null || true
+
 DATA_DIR := /var/lib/sentinel-data
 
 .PHONY: data-reset
@@ -136,7 +159,7 @@ set-repo: ## Point Argo CD at your Git repo: make set-repo REPO=https://github.c
 .PHONY: lint
 lint: ## Run the same checks as CI (needs terraform and shellcheck)
 	terraform fmt -check -recursive infra
-	shellcheck infra/devbox/bootstrap.sh deploy/kind/install-gvisor.sh scripts/secrets.sh
+	shellcheck infra/devbox/bootstrap.sh deploy/kind/install-gvisor.sh scripts/*.sh
 
 .PHONY: help
 help: ## Show this help

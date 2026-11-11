@@ -22,7 +22,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck infra/devbox/bootstrap.sh deploy/kind/install-gvisor.sh scripts/secrets.sh
+      - run: shellcheck infra/devbox/bootstrap.sh deploy/kind/install-gvisor.sh scripts/*.sh
+
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Throwaway Postgres + pgvector: upgrade, downgrade, upgrade, then role permission checks.
+      - run: ./scripts/db-test.sh
 
   manifests:
     runs-on: ubuntu-latest
@@ -34,7 +41,7 @@ jobs:
             | tar -xz -C /usr/local/bin kubeconform
       - name: Validate Kubernetes manifests
         # CRD-based resources (Argo CD Application, CNPG Cluster, PodMonitor) have no built-in schema; they are checked for YAML validity only.
-        run: kubeconform -strict -summary -ignore-missing-schemas deploy/platform deploy/tests deploy/data deploy/argocd/apps deploy/argocd/root-app.yaml
+        run: kubeconform -strict -summary -ignore-missing-schemas deploy/platform deploy/tests deploy/data deploy/apps deploy/argocd/apps deploy/argocd/root-app.yaml
 
   python:
     runs-on: ubuntu-latest

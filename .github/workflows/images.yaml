@@ -1,0 +1,63 @@
+# Builds service images, pushes them to GHCR, then commits the new tag to Git
+# so Argo CD rolls it out (the "CI updates the manifest" GitOps pattern).
+name: images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/db/**
+      - .github/workflows/images.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: write   # commit the new image tag
+  packages: write   # push to ghcr.io
+
+concurrency:
+  group: images
+  cancel-in-progress: false
+
+jobs:
+  db-migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same test as CI and the dev machine: never ship migrations that fail it.
+      - name: Test migrations
+        run: ./scripts/db-test.sh
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tag
+        id: tag
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/db
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sentinel-db-migrate:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/sentinel-db-migrate:main
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Point the db-migrate app at the new image
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          sed -i "s/^    newTag: .*/    newTag: ${TAG}/" deploy/apps/db-migrate/kustomization.yaml
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/apps/db-migrate/kustomization.yaml
+          git commit -m "deploy: db-migrate ${TAG} [skip ci]" || { echo "Tag unchanged"; exit 0; }
+          git pull --rebase origin main
+          git push origin HEAD:main

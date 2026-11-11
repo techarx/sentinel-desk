@@ -24,6 +24,24 @@ spec:
         # Fails loudly at setup if the image lacks pgvector.
         - CREATE EXTENSION IF NOT EXISTS vector;
 
+  # Least-privilege login roles, created and kept in sync by the operator.
+  # Passwords come from Secrets made by scripts/secrets.sh. What each role may
+  # touch is granted by the migrations (services/db/migrations/versions/0002_*).
+  managed:
+    roles:
+      - name: ingest_writer      # ingest-edgar: writes filings, sections, chunks, embeddings
+        ensure: present
+        login: true
+        passwordSecret: { name: pg-role-ingest-writer }
+      - name: stream_writer      # trade-consumer: writes trades and exposures
+        ensure: present
+        login: true
+        passwordSecret: { name: pg-role-stream-writer }
+      - name: readonly_analyst   # trades_sql MCP tool (Phase 3): SELECT only, no PII columns
+        ensure: present
+        login: true
+        passwordSecret: { name: pg-role-readonly-analyst }
+
   storage:
     storageClass: sentinel-data
     size: 10Gi

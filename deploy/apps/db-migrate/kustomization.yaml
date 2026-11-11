@@ -1,0 +1,9 @@
+# CI (.github/workflows/images.yaml) rewrites newTag after each image build.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: data
+resources:
+  - job.yaml
+images:
+  - name: ghcr.io/techarx/sentinel-db-migrate
+    newTag: main
