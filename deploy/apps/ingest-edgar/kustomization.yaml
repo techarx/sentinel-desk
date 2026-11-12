@@ -7,4 +7,4 @@ resources:
   - cronjob.yaml
 images:
   - name: ghcr.io/techarx/sentinel-ingest-edgar
-    newTag: sha-f22de05
+    newTag: sha-b2cf407
