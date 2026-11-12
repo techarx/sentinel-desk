@@ -21,6 +21,9 @@ spec:
     spec:
       nodeSelector:
         workload: general
+      # No service-link env vars: Kubernetes would otherwise inject e.g. REDIS_PORT=tcp://10.x.x.x:6379
+      # for the Service named "redis", clashing with our own settings. Services are found by DNS name.
+      enableServiceLinks: false
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
