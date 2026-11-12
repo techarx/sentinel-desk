@@ -1,0 +1,13 @@
+# Prometheus scrapes /metrics from the generator and consumer
+# (throughput, event-time lag, consumer-group lag) for the Step 1.5 dashboard.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: sentinel-trades
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: sentinel-trades
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 15s

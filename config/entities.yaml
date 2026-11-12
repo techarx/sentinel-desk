@@ -7,18 +7,21 @@
 # Banks whose SEC filings are ingested (Phase 1).
 # The CIK is the SEC's permanent company ID and is what ingestion looks up;
 # tickers can change (Bank of New York Mellon moved from BK to BNY).
-# Verified against https://www.sec.gov/files/company_tickers.json on 2026-11-11.
+# The LEI is the parent company's Legal Entity Identifier in GLEIF; its
+# subsidiaries become real counterparties (see `counterparties` below).
+# Verified against https://www.sec.gov/files/company_tickers.json and
+# https://api.gleif.org (status ISSUED) on 2026-11-11.
 banks:
-  - { ticker: BAC, cik: 70858,   name: "Bank of America Corp" }
-  - { ticker: C,   cik: 831001,  name: "Citigroup Inc" }
-  - { ticker: WFC, cik: 72971,   name: "Wells Fargo & Co" }
-  - { ticker: GS,  cik: 886982,  name: "Goldman Sachs Group Inc" }
-  - { ticker: MS,  cik: 895421,  name: "Morgan Stanley" }
-  - { ticker: USB, cik: 36104,   name: "U.S. Bancorp" }
-  - { ticker: PNC, cik: 713676,  name: "PNC Financial Services Group Inc" }
-  - { ticker: TFC, cik: 92230,   name: "Truist Financial Corp" }
-  - { ticker: COF, cik: 927628,  name: "Capital One Financial Corp" }
-  - { ticker: BNY, cik: 1390777, name: "Bank of New York Mellon Corp" }
+  - { ticker: BAC, cik: 70858,   lei: 9DJT3UXIJIZJI4WXO774, name: "Bank of America Corp" }
+  - { ticker: C,   cik: 831001,  lei: 6SHGI4ZSSLCXXQSBB395, name: "Citigroup Inc" }
+  - { ticker: WFC, cik: 72971,   lei: PBLD0EJDB5FWOLXP3B76, name: "Wells Fargo & Co" }
+  - { ticker: GS,  cik: 886982,  lei: 784F5XWPLTWKTBV3E584, name: "Goldman Sachs Group Inc" }
+  - { ticker: MS,  cik: 895421,  lei: IGJSJL3JD5P30I6NJZ34, name: "Morgan Stanley" }
+  - { ticker: USB, cik: 36104,   lei: N1GZ7BBF3NP8GI976H15, name: "U.S. Bancorp" }
+  - { ticker: PNC, cik: 713676,  lei: CFGNEKW0P8842LEUIA51, name: "PNC Financial Services Group Inc" }
+  - { ticker: TFC, cik: 92230,   lei: 549300DRQQI75D2JP341, name: "Truist Financial Corp" }
+  - { ticker: COF, cik: 927628,  lei: ZUE8T73ROZOF6FLBAR73, name: "Capital One Financial Corp" }
+  - { ticker: BNY, cik: 1390777, lei: WFLLPEPC7FZXENRZV188, name: "Bank of New York Mellon Corp" }
 
 # Where counterparties for the synthetic trade book come from.
 counterparties:
@@ -27,7 +30,8 @@ counterparties:
     source: gleif
     scope: subsidiaries_of_banks
     max_per_bank: 15
-  # Everything else is fictional, generated with Faker (fixed seed).
+  # Everything else is fictional: names built from a fixed, made-up word list
+  # (not Faker surnames), with a fixed random seed so every run is identical.
   fictional:
     count: 150
     kinds: [hedge_fund, asset_manager, corporate, insurer, pension_fund]

@@ -1,0 +1,4 @@
+# Unit tests cover the pure logic (trade format, exposure maths, generator, reference data).
+# Database behaviour is covered by scripts/trades-test.sh against real containers.
+pytest>=8,<9
+-r requirements.txt

@@ -37,6 +37,10 @@ spec:
         ensure: present
         login: true
         passwordSecret: { name: pg-role-stream-writer }
+      - name: trade_generator    # trade-generator: reads desks, books, counterparties only
+        ensure: present
+        login: true
+        passwordSecret: { name: pg-role-trade-generator }
       - name: readonly_analyst   # trades_sql MCP tool (Phase 3): SELECT only, no PII columns
         ensure: present
         login: true

@@ -1,0 +1,62 @@
+# Publishes synthetic trades to the Redis stream "trades".
+#
+# Starts at 0 replicas: at 100 trades/s it adds ~8.6 million rows a day, so it
+# runs only when wanted: `make stream-start` / `make stream-stop`. The Argo CD
+# app ignores spec.replicas (ignoreDifferences), so it won't undo that switch.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trade-generator
+  labels:
+    app.kubernetes.io/name: trade-generator
+    app.kubernetes.io/part-of: sentinel-trades
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trade-generator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trade-generator
+        app.kubernetes.io/part-of: sentinel-trades
+    spec:
+      nodeSelector:
+        workload: general
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: generator
+          image: ghcr.io/techarx/sentinel-trades   # tag set by kustomization.yaml
+          args: ["generate"]
+          env:
+            - { name: TRADE_RATE, value: "100" }
+            # Read-only access to desks, books, counterparties.
+            - { name: PGHOST, value: sentinel-pg-rw }
+            - { name: PGDATABASE, value: sentinel }
+            - { name: PGSSLMODE, value: require }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-role-trade-generator, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-role-trade-generator, key: password } }
+            - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom: { secretKeyRef: { name: redis-auth, key: password } }
+          ports:
+            - { name: metrics, containerPort: 9100 }
+          readinessProbe:
+            httpGet: { path: /metrics, port: metrics }
+          livenessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }

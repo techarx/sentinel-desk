@@ -148,6 +148,36 @@ ingest-status: ## Filings, sections and chunks per bank (Postgres) and documents
 	kubectl -n data exec opensearch-cluster-master-0 -c opensearch -- \
 	  curl -sk -u "admin:$$pw" "https://localhost:9200/_cat/count/chunks?h=count" | xargs echo "OpenSearch chunks index documents:"
 
+# ---------------------------------------------------------------------------
+##@ Trade stream (run on the dev machine)
+# ---------------------------------------------------------------------------
+
+.PHONY: stream-start
+stream-start: ## Start the trade generator (~100 trades/s; adds ~8.6M rows/day while on)
+	kubectl -n data scale deployment trade-generator --replicas=1
+
+.PHONY: stream-stop
+stream-stop: ## Stop the trade generator (the consumer drains what is left)
+	kubectl -n data scale deployment trade-generator --replicas=0
+
+.PHONY: stream-status
+stream-status: ## Generator on/off, stream backlog, and trades committed in the last minute with their lag
+	@echo "generator replicas: $$(kubectl -n data get deployment trade-generator -o jsonpath='{.spec.replicas}')"
+	@pw=$$(kubectl -n data get secret redis-auth -o jsonpath='{.data.password}' | base64 -d); \
+	kubectl -n data exec redis-0 -- env REDISCLI_AUTH="$$pw" redis-cli XINFO GROUPS trades 2>/dev/null \
+	  | paste - - | grep -E "^(name|pending|lag|entries-read)" | tr '\t' ' ' | sed 's/^/stream: /' || true
+	@kubectl -n data exec sentinel-pg-1 -c postgres -- psql -U postgres -d sentinel -c "\
+	  SELECT count(*) AS trades_last_minute, \
+	         round(count(*) / 60.0, 1) AS per_second, \
+	         round(avg(extract(epoch FROM ingested_at - ts))::numeric, 3) AS avg_lag_s, \
+	         round(max(extract(epoch FROM ingested_at - ts))::numeric, 3) AS max_lag_s, \
+	         (SELECT count(*) FROM trades) AS trades_total, (SELECT count(*) FROM exposures) AS exposure_rows \
+	    FROM trades WHERE ingested_at > now() - interval '1 minute';"
+
+.PHONY: trades-test
+trades-test: ## Integration test: seed + stream + redelivery against throwaway Postgres/Redis/Neo4j (same as CI)
+	./scripts/trades-test.sh
+
 DATA_DIR := /var/lib/sentinel-data
 
 .PHONY: data-reset

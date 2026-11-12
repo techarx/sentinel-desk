@@ -1,0 +1,32 @@
+# Trade stream: seed hook, generator, consumer. Wave 3: after the schema (wave 1).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trades
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/techarx/sentinel-desk.git
+    targetRevision: main
+    path: deploy/apps/trades
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+  # The generator is switched on and off with `kubectl scale` (make stream-start/stop);
+  # don't treat that as drift, and don't reset it on sync.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: trade-generator
+      jsonPointers:
+        - /spec/replicas
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions:
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

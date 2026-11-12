@@ -1,0 +1,13 @@
+# CI (.github/workflows/images.yaml) rewrites newTag after each image build.
+# The new tag changes the Deployments, so Argo CD syncs and the seed hook runs.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: data
+resources:
+  - seed-job.yaml
+  - generator.yaml
+  - consumer.yaml
+  - podmonitor.yaml
+images:
+  - name: ghcr.io/techarx/sentinel-trades
+    newTag: main

@@ -26,6 +26,7 @@ jobs:
     outputs:
       db-migrate: ${{ steps.diff.outputs.db-migrate }}
       ingest-edgar: ${{ steps.diff.outputs.ingest-edgar }}
+      trades: ${{ steps.diff.outputs.trades }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,6 +43,7 @@ jobs:
           }
           echo "db-migrate=$(changed '^(services/db/|scripts/db-test.sh|\.github/workflows/images.yaml)')" >> "$GITHUB_OUTPUT"
           echo "ingest-edgar=$(changed '^(services/ingest-edgar/|config/entities.yaml|\.github/workflows/images.yaml)')" >> "$GITHUB_OUTPUT"
+          echo "trades=$(changed '^(services/trades/|scripts/trades-test.sh|config/entities.yaml|\.github/workflows/images.yaml)')" >> "$GITHUB_OUTPUT"
 
   db-migrate:
     needs: changes
@@ -80,4 +82,31 @@ jobs:
           context: .
           dockerfile: services/ingest-edgar/Dockerfile
           kustomization: deploy/apps/ingest-edgar/kustomization.yaml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  trades:
+    needs: [changes, db-migrate, ingest-edgar]
+    # Runs after the other image jobs (if they ran) so tag commits never race.
+    if: >-
+      always() && needs.changes.outputs.trades == 'true'
+      && needs.db-migrate.result != 'failure' && needs.ingest-edgar.result != 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: |
+          pip install -r services/trades/requirements-dev.txt
+          python -m pytest -q services/trades/tests
+      # Real Postgres + Redis + Neo4j: seed, stream, redelivery, totals.
+      - name: Integration test
+        run: ./scripts/trades-test.sh
+      - uses: ./.github/actions/build-and-bump
+        with:
+          image: sentinel-trades
+          context: .
+          dockerfile: services/trades/Dockerfile
+          kustomization: deploy/apps/trades/kustomization.yaml
           token: ${{ secrets.GITHUB_TOKEN }}

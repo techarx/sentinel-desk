@@ -42,7 +42,7 @@ apply_secret data pg-app-credentials --type=kubernetes.io/basic-auth \
 
 # Login roles managed by CloudNativePG (deploy/data/postgres/cluster.yaml).
 # CNPG requires basic-auth Secrets whose username matches the role name.
-for role in ingest_writer stream_writer readonly_analyst; do
+for role in ingest_writer stream_writer trade_generator readonly_analyst; do
   apply_secret data "pg-role-${role//_/-}" --type=kubernetes.io/basic-auth \
     --from-literal=username="${role}" \
     --from-literal=password="$(get_or_create "postgres-${role}")"

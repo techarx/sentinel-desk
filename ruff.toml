@@ -18,4 +18,4 @@ ignore = [
 ]
 
 [lint.isort]
-known-first-party = ["ingest_edgar"]
+known-first-party = ["ingest_edgar", "trades"]

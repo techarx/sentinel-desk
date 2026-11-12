@@ -31,6 +31,13 @@ jobs:
       # Throwaway Postgres + pgvector: upgrade, downgrade, upgrade, then role permission checks.
       - run: ./scripts/db-test.sh
 
+  trades-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Real Postgres + Redis + Neo4j: seed, stream, redelivery (no double counting), totals.
+      - run: ./scripts/trades-test.sh
+
   manifests:
     runs-on: ubuntu-latest
     steps:
@@ -57,5 +64,9 @@ jobs:
         run: |
           pip install -r services/ingest-edgar/requirements-dev.txt
           python -m pytest -q services/ingest-edgar/tests
+      - name: trades unit tests
+        run: |
+          pip install -r services/trades/requirements-dev.txt
+          python -m pytest -q services/trades/tests
 
   # Added in later phases: golangci-lint (sidecar-go), eslint (ui), image build + Trivy + cosign, eval gate.

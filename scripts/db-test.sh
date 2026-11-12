@@ -6,6 +6,9 @@
 #  2. builds the migrations image and runs: upgrade head -> downgrade base -> upgrade head
 #  3. checks tables, indexes and that each role can do only what it should
 #  4. optionally writes the Mermaid ER diagram (ER_OUT=docs/data-model.md)
+#
+# KEEP_DB=1 leaves the migrated Postgres running on the docker network
+# "sentinel-dbtest" for a follow-on test (scripts/trades-test.sh uses this).
 set -euo pipefail
 
 NET=sentinel-dbtest
@@ -14,8 +17,8 @@ IMG=sentinel-db-migrate:test
 PW=test-only-password
 
 cleanup() { docker rm -f "$PG" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; }
-trap cleanup EXIT
 cleanup
+[[ "${KEEP_DB:-}" == 1 ]] || trap cleanup EXIT
 
 echo "==> Starting throwaway Postgres 17 + pgvector"
 docker network create "$NET" >/dev/null
@@ -29,6 +32,7 @@ psql_admin -c "CREATE ROLE sentinel LOGIN PASSWORD '$PW';" -c "CREATE DATABASE s
 psql_admin -d sentinel -c "CREATE EXTENSION vector;" \
    -c "CREATE ROLE ingest_writer LOGIN PASSWORD '$PW';" \
    -c "CREATE ROLE stream_writer LOGIN PASSWORD '$PW';" \
+   -c "CREATE ROLE trade_generator LOGIN PASSWORD '$PW';" \
    -c "CREATE ROLE readonly_analyst LOGIN PASSWORD '$PW';" >/dev/null
 
 echo "==> Building migrations image"
@@ -52,7 +56,7 @@ check() {  # check "<description>" "<expected>" "<role>" "<sql>"
 }
 
 echo "==> Checks"
-check "current revision is 0002"                     "0002" sentinel "select version_num from alembic_version"
+check "current revision is 0003"                     "0003" sentinel "select version_num from alembic_version"
 check "11 tables created"                            "11"   sentinel "select count(*) from information_schema.tables where table_schema='public' and table_name <> 'alembic_version'"
 check "HNSW vector index exists"                     "1"    sentinel "select count(*) from pg_indexes where indexname='chunk_embeddings_hnsw_idx'"
 check "7 PII columns registered"                     "7"    sentinel "select count(*) from pii_columns"
@@ -62,6 +66,9 @@ check "ingest_writer can insert a filing"            "INSERT 0 1" ingest_writer 
 check "ingest_writer cannot read trades"             "permission denied" ingest_writer "select count(*) from trades"
 check "stream_writer cannot write filings"           "permission denied" stream_writer "delete from filings"
 check "stream_writer cannot update trades"           "permission denied" stream_writer "update trades set notional = 1"
+check "trade_generator can read counterparties"      "0"    trade_generator "select count(*) from counterparties"
+check "trade_generator cannot write trades"          "permission denied" trade_generator "delete from trades"
+check "trade_generator cannot read customers"        "permission denied" trade_generator "select id from customers"
 check "readonly_analyst can read filings"            "1"    readonly_analyst "select count(*) from filings"
 check "readonly_analyst can read non-PII customer columns" "0" readonly_analyst "select count(*) from (select id, desk_id, segment, created_at from customers) c"
 check "readonly_analyst cannot read customers.ssn"   "permission denied" readonly_analyst "select ssn from customers"
