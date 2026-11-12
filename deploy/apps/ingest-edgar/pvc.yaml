@@ -1,0 +1,12 @@
+# Downloaded filings, cached so re-runs never fetch from the SEC twice.
+# On the dev machine: /var/lib/sentinel-data/data/edgar-cache
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: edgar-cache
+spec:
+  storageClassName: sentinel-data
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi

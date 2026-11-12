@@ -129,6 +129,25 @@ db-status: ## Show the applied migration and the db-migrate Job's last run
 	@kubectl -n data exec sentinel-pg-1 -c postgres -- psql -U postgres -d sentinel -tAc "select 'revision: ' || version_num from alembic_version" 2>/dev/null || echo "no migrations applied yet"
 	@kubectl -n data get job db-migrate -o custom-columns=JOB:.metadata.name,COMPLETIONS:.status.succeeded,FAILED:.status.failed,IMAGE:.spec.template.spec.containers[0].image 2>/dev/null || true
 
+.PHONY: ingest
+ingest: ## Run EDGAR ingestion now (a one-off Job from the ingest-edgar CronJob) and follow its log
+	@job=ingest-edgar-manual-$$(date +%s); \
+	kubectl -n data create job $$job --from=cronjob/ingest-edgar >/dev/null && echo "Started $$job"; \
+	kubectl -n data wait --for=condition=Ready pod -l job-name=$$job --timeout=300s >/dev/null && \
+	kubectl -n data logs -f job/$$job
+
+.PHONY: ingest-status
+ingest-status: ## Filings, sections and chunks per bank (Postgres) and documents in OpenSearch
+	@kubectl -n data exec sentinel-pg-1 -c postgres -- psql -U postgres -d sentinel -c "\
+	  SELECT f.ticker, count(DISTINCT f.id) AS filings, count(DISTINCT s.id) AS sections, \
+	         count(c.id) AS chunks, count(e.chunk_id) AS embedded \
+	    FROM filings f LEFT JOIN sections s ON s.filing_id = f.id \
+	    LEFT JOIN chunks c ON c.section_id = s.id LEFT JOIN chunk_embeddings e ON e.chunk_id = c.id \
+	   GROUP BY ROLLUP (f.ticker) ORDER BY f.ticker NULLS LAST;"
+	@pw=$$(kubectl -n data get secret opensearch-admin -o jsonpath='{.data.password}' | base64 -d); \
+	kubectl -n data exec opensearch-cluster-master-0 -c opensearch -- \
+	  curl -sk -u "admin:$$pw" "https://localhost:9200/_cat/count/chunks?h=count" | xargs echo "OpenSearch chunks index documents:"
+
 DATA_DIR := /var/lib/sentinel-data
 
 .PHONY: data-reset

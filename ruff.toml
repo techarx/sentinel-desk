@@ -1,0 +1,21 @@
+# Lint rules are pinned here so CI results don't change when a new ruff release
+# turns on more checks by default.
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = [
+  "E", "W",  # pycodestyle
+  "F",       # pyflakes: unused imports, undefined names
+  "I",       # import order
+  "B",       # bugbear: likely bugs
+  "UP",      # modern Python syntax
+  "PLE",     # pylint errors (e.g. invisible characters in strings)
+  "RUF",     # ruff-specific checks
+]
+ignore = [
+  "RUF001", "RUF002", "RUF003",  # en/em dashes and curly quotes are intentional (they occur in filings)
+]
+
+[lint.isort]
+known-first-party = ["ingest_edgar"]

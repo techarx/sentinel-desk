@@ -50,5 +50,12 @@ jobs:
       # hashFiles() is only allowed at step level, so the skip-when-no-Python check lives here.
       - uses: astral-sh/ruff-action@v3
         if: ${{ hashFiles('**/*.py') != '' }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: ingest-edgar unit tests
+        run: |
+          pip install -r services/ingest-edgar/requirements-dev.txt
+          python -m pytest -q services/ingest-edgar/tests
 
   # Added in later phases: golangci-lint (sidecar-go), eslint (ui), image build + Trivy + cosign, eval gate.

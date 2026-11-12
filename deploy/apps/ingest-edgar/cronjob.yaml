@@ -1,0 +1,85 @@
+# EDGAR ingestion.
+#
+# A CronJob, not a sync hook: it's an ordinary resource Argo CD compares, so a
+# new image tag simply updates it (no tripwire ConfigMap needed). It runs
+# daily to pick up new filings and skips filings already loaded. Start a run
+# on demand with `make ingest`.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ingest-edgar
+spec:
+  schedule: "0 6 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 10800   # 3 hours
+      template:
+        metadata:
+          labels:
+            app: ingest-edgar
+        spec:
+          restartPolicy: Never
+          # The download cache lives on sentinel-data storage, which exists only on the data node.
+          nodeSelector:
+            workload: data
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: ingest
+              image: ghcr.io/techarx/sentinel-ingest-edgar   # tag set by kustomization.yaml
+              env:
+                - name: SEC_USER_AGENT
+                  valueFrom:
+                    secretKeyRef: { name: sec-edgar, key: user-agent }
+                # Postgres as the least-privilege ingest_writer role.
+                - name: PGHOST
+                  value: sentinel-pg-rw
+                - name: PGDATABASE
+                  value: sentinel
+                - name: PGSSLMODE
+                  value: require
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef: { name: pg-role-ingest-writer, key: username }
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef: { name: pg-role-ingest-writer, key: password }
+                - name: OPENSEARCH_URL
+                  value: https://opensearch-cluster-master:9200
+                - name: OPENSEARCH_USER
+                  value: admin   # a dedicated least-privilege OpenSearch user comes in Phase 5
+                - name: OPENSEARCH_PASSWORD
+                  valueFrom:
+                    secretKeyRef: { name: opensearch-admin, key: password }
+                - name: CACHE_DIR
+                  value: /cache
+              resources:
+                requests: { cpu: "1", memory: 1Gi }
+                limits: { memory: 3Gi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: cache
+                  mountPath: /cache
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: cache
+              persistentVolumeClaim:
+                claimName: edgar-cache
+            - name: tmp
+              emptyDir: {}

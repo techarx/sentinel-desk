@@ -1,0 +1,19 @@
+# EDGAR ingestion CronJob + its download cache. Wave 2: after the schema (wave 1).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingest-edgar
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/techarx/sentinel-desk.git
+    targetRevision: main
+    path: deploy/apps/ingest-edgar
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

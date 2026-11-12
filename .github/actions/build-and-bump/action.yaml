@@ -1,0 +1,50 @@
+# Shared steps: build and push one image to GHCR, then commit its new tag.
+name: build-and-bump
+description: Build an image, push it to GHCR and point its kustomization at the new tag
+inputs:
+  image: { description: "Image name under ghcr.io/<owner>/", required: true }
+  context: { description: "Docker build context", required: true }
+  dockerfile: { description: "Path to the Dockerfile", required: true }
+  kustomization: { description: "kustomization.yaml whose tags to update", required: true }
+  token: { description: "GITHUB_TOKEN", required: true }
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@v3
+    - uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.token }}
+    - id: tag
+      shell: bash
+      run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+    - uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/${{ inputs.image }}:${{ steps.tag.outputs.tag }}
+          ghcr.io/${{ github.repository_owner }}/${{ inputs.image }}:main
+        labels: |
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+    - name: Commit the new tag
+      shell: bash
+      env:
+        TAG: ${{ steps.tag.outputs.tag }}
+        FILE: ${{ inputs.kustomization }}
+        IMAGE: ${{ inputs.image }}
+      run: |
+        # newTag always; image-tag only where a release ConfigMap exists (db-migrate).
+        sed -i -e "s/^    newTag: .*/    newTag: ${TAG}/" -e "s/^      - image-tag=.*/      - image-tag=${TAG}/" "$FILE"
+        git config user.name  "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add "$FILE"
+        git commit -m "deploy: ${IMAGE} ${TAG} [skip ci]" || { echo "Tag unchanged"; exit 0; }
+        for attempt in 1 2 3; do
+          git pull --rebase origin main && git push origin HEAD:main && exit 0
+          sleep $((attempt * 5))
+        done
+        exit 1

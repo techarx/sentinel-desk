@@ -57,6 +57,20 @@ apply_secret data redis-auth \
 apply_secret data neo4j-auth \
   --from-literal=NEO4J_AUTH="neo4j/$(get_or_create neo4j)"
 
+# SEC EDGAR requires a User-Agent with a contact email on every request.
+# Personal data, so it is never in Git: provide it once with
+#   SEC_USER_AGENT="Your Name you@example.com" make secrets
+SEC_FILE="${STORE}/sec-user-agent"
+if [[ -n "${SEC_USER_AGENT:-}" ]]; then
+  printf '%s' "${SEC_USER_AGENT}" | sudo tee "${SEC_FILE}" >/dev/null
+  sudo chmod 0600 "${SEC_FILE}"
+fi
+if sudo test -s "${SEC_FILE}"; then
+  apply_secret data sec-edgar --from-literal=user-agent="$(sudo cat "${SEC_FILE}")"
+else
+  echo "    (skipped data/sec-edgar: run once with SEC_USER_AGENT=\"Name email@example.com\" make secrets)"
+fi
+
 apply_secret monitoring grafana-admin \
   --from-literal=admin-user=admin \
   --from-literal=admin-password="$(get_or_create grafana)"

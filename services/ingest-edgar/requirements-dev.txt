@@ -1,0 +1,6 @@
+# Unit tests cover the pure modules (allowlist, HTML-to-text, Item splitter, chunker);
+# they need neither the embedding model nor the databases.
+pytest>=8,<9
+beautifulsoup4>=4.12,<5
+lxml>=5,<7
+PyYAML>=6,<7
