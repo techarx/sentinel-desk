@@ -6,7 +6,7 @@ resources:
   - job.yaml
 images:
   - name: ghcr.io/techarx/sentinel-db-migrate
-    newTag: sha-b2cf407
+    newTag: sha-32fdec3
 
 # Why this ConfigMap exists: the Job is an Argo CD sync hook, and Argo CD ignores
 # hooks when deciding whether an app is out of sync. An app containing only a
@@ -16,6 +16,6 @@ images:
 configMapGenerator:
   - name: db-migrate-release
     literals:
-      - image-tag=sha-b2cf407
+      - image-tag=sha-32fdec3
 generatorOptions:
   disableNameSuffixHash: true

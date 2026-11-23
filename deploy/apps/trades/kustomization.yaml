@@ -10,4 +10,4 @@ resources:
   - podmonitor.yaml
 images:
   - name: ghcr.io/techarx/sentinel-trades
-    newTag: sha-b2cf407
+    newTag: sha-32fdec3
