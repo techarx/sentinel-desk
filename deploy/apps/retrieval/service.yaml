@@ -1,0 +1,10 @@
+# In-cluster address: http://retrieval.data.svc:8000 (or just http://retrieval:8000 from the data namespace)
+apiVersion: v1
+kind: Service
+metadata:
+  name: retrieval
+spec:
+  selector:
+    app.kubernetes.io/name: retrieval
+  ports:
+    - { name: http, port: 8000, targetPort: http }

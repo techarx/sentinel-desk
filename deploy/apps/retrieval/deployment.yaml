@@ -1,0 +1,63 @@
+# Retrieval service: GET /search (vector, bm25, hybrid). Agents call it in Phase 3;
+# `make search` runs its CLI inside this pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retrieval
+  labels:
+    app.kubernetes.io/name: retrieval
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: retrieval
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: retrieval
+    spec:
+      nodeSelector:
+        workload: general
+      enableServiceLinks: false   # no injected *_PORT variables (see the trades crash, Phase 1)
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: retrieval
+          image: ghcr.io/techarx/sentinel-retrieval   # tag set by kustomization.yaml
+          args: ["serve"]
+          env:
+            # Read-only, no PII: the role the Phase 3 tools will use too.
+            - { name: PGHOST, value: sentinel-pg-rw }
+            - { name: PGDATABASE, value: sentinel }
+            - { name: PGSSLMODE, value: require }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-role-readonly-analyst, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-role-readonly-analyst, key: password } }
+            - { name: OPENSEARCH_URL, value: "https://opensearch-cluster-master:9200" }
+            - { name: OPENSEARCH_USER, value: admin }   # a read-only OpenSearch user comes in Phase 5
+            - name: OPENSEARCH_PASSWORD
+              valueFrom: { secretKeyRef: { name: opensearch-admin, key: password } }
+          ports:
+            - { name: http, containerPort: 8000 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 15
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}

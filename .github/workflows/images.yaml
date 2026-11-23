@@ -27,6 +27,7 @@ jobs:
       db-migrate: ${{ steps.diff.outputs.db-migrate }}
       ingest-edgar: ${{ steps.diff.outputs.ingest-edgar }}
       trades: ${{ steps.diff.outputs.trades }}
+      retrieval: ${{ steps.diff.outputs.retrieval }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,6 +45,7 @@ jobs:
           echo "db-migrate=$(changed '^(services/db/|scripts/db-test.sh|\.github/workflows/images.yaml)')" >> "$GITHUB_OUTPUT"
           echo "ingest-edgar=$(changed '^(services/ingest-edgar/|config/entities.yaml|\.github/workflows/images.yaml)')" >> "$GITHUB_OUTPUT"
           echo "trades=$(changed '^(services/trades/|scripts/trades-test.sh|config/entities.yaml|\.github/workflows/images.yaml)')" >> "$GITHUB_OUTPUT"
+          echo "retrieval=$(changed '^(services/retrieval/|\.github/workflows/images.yaml)')" >> "$GITHUB_OUTPUT"
 
   db-migrate:
     needs: changes
@@ -109,4 +111,29 @@ jobs:
           context: .
           dockerfile: services/trades/Dockerfile
           kustomization: deploy/apps/trades/kustomization.yaml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  retrieval:
+    needs: [changes, db-migrate, ingest-edgar, trades]
+    # Runs after the other image jobs (if they ran) so tag commits never race.
+    if: >-
+      always() && needs.changes.outputs.retrieval == 'true'
+      && needs.db-migrate.result != 'failure' && needs.ingest-edgar.result != 'failure'
+      && needs.trades.result != 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: |
+          pip install -r services/retrieval/requirements-dev.txt
+          python -m pytest -q services/retrieval/tests
+      - uses: ./.github/actions/build-and-bump
+        with:
+          image: sentinel-retrieval
+          context: services/retrieval
+          dockerfile: services/retrieval/Dockerfile
+          kustomization: deploy/apps/retrieval/kustomization.yaml
           token: ${{ secrets.GITHUB_TOKEN }}

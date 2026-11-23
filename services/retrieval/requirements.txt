@@ -1,0 +1,5 @@
+fastembed>=0.5,<1
+psycopg[binary]>=3.2,<4
+opensearch-py>=2.6,<4
+fastapi>=0.110,<1
+uvicorn>=0.29,<1

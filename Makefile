@@ -178,6 +178,18 @@ stream-status: ## Generator on/off, stream backlog, and trades committed in the 
 trades-test: ## Integration test: seed + stream + redelivery against throwaway Postgres/Redis/Neo4j (same as CI)
 	./scripts/trades-test.sh
 
+# ---------------------------------------------------------------------------
+##@ Retrieval (run on the dev machine)
+# ---------------------------------------------------------------------------
+
+.PHONY: search
+search: ## Search the filings 3 ways: make search Q="question" [K=5] [TICKER=BAC,WFC] [YEAR=2025] [FORM=10-K] [ITEM=7] [METHOD=all|vector|bm25|hybrid] [NO_INSTRUCTION=1]
+	@test -n "$(Q)" || { echo 'Usage: make search Q="your question" [K=5] [TICKER=BAC] [YEAR=2025] [ITEM=7] [METHOD=hybrid]'; exit 1; }
+	@kubectl -n data exec deploy/retrieval -- python -m retrieval search "$(Q)" \
+	  -k $(or $(K),5) --method $(or $(METHOD),all) \
+	  --ticker "$(TICKER)" --year "$(YEAR)" --form "$(FORM)" --item "$(ITEM)" \
+	  $(if $(NO_INSTRUCTION),--no-instruction,)
+
 DATA_DIR := /var/lib/sentinel-data
 
 .PHONY: data-reset

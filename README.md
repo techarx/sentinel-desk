@@ -5,13 +5,25 @@ It answers questions over SEC filings and a live stream of synthetic trades, and
 Python inside a gVisor (or Kata) sandbox, with mTLS, workload identity, fine-grained authorization
 and guardrails on every hop.
 
-> Status: **Phase 0 — Foundations** (repo, dev machine, kind cluster, Argo CD, CI).
+> Status: **Phase 1 — Data layer and real-time ingestion** (60 SEC filings searchable; live trade stream).
+> Remaining: the 1-hour soak test and Grafana dashboard (Step 1.5). See [Phase 1 summary](docs/phase-1-summary.md).
+
+| Phase | Summary |
+|---|---|
+| 0 — Foundations | [docs/phase-0-summary.pdf](docs/phase-0-summary.pdf) |
+| 1 — Data layer | [docs/phase-1-summary.md](docs/phase-1-summary.md) · [data model](docs/data-model.md) |
 
 ## Repository layout
 
 | Path | What lives there |
 |---|---|
-| `services/` | Python services (ingestion, MCP tool servers) |
+| `services/db/` | Alembic schema migrations |
+| `services/ingest-edgar/` | SEC filings → sections → chunks → embeddings → Postgres + OpenSearch |
+| `services/trades/` | Reference data seed, trade generator, trade consumer |
+| `config/entities.yaml` | Allowlist: the only real companies the project may use |
+| `deploy/data/` | Data stores (Postgres cluster, Redis) |
+| `deploy/apps/` | Application workloads (migrations, ingestion, trade stream) |
+| `scripts/` | Secrets, migration test, trade stream integration test |
 | `agents/` | LangGraph agents (Planner, Retrieval, Analyst, Compliance) |
 | `sidecar-go/` | Go guardrail sidecar (Phase 6) |
 | `ui/` | Next.js agent UI (Phase 7) |

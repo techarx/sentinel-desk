@@ -1,0 +1,5 @@
+# Unit tests cover the pure logic (fusion, filters); no model or databases needed,
+# but the modules import the database clients.
+pytest>=8,<9
+psycopg[binary]>=3.2,<4
+opensearch-py>=2.6,<4

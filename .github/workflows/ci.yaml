@@ -68,5 +68,9 @@ jobs:
         run: |
           pip install -r services/trades/requirements-dev.txt
           python -m pytest -q services/trades/tests
+      - name: retrieval unit tests
+        run: |
+          pip install -r services/retrieval/requirements-dev.txt
+          python -m pytest -q services/retrieval/tests
 
   # Added in later phases: golangci-lint (sidecar-go), eslint (ui), image build + Trivy + cosign, eval gate.
