@@ -33,6 +33,51 @@ def _print_hits(method: str, hits: list[Hit], preview: int) -> None:
         print(textwrap.indent(textwrap.fill(snippet, 100), "      "))
 
 
+def _ask(args) -> int:
+    from .judge import judge
+    from .llm import LLM
+    from .rag import answer, citation_check
+
+    filters = Filters.parse(args.ticker, args.year, args.form, args.item)
+    llm = LLM()
+    ans = answer(args.question, Searcher(), llm, args.method, args.k, filters)
+
+    print(f'Question: "{ans.question}"')
+    print(f"Retrieval: {ans.method}, k={args.k}, filters: {filters.describe()}   Model: {llm.model_id}")
+    print("\n── SOURCES given to the LLM " + "─" * 50)
+    for i, h in enumerate(ans.sources, start=1):
+        print(f"[S{i}] chunk {h.chunk_id:<6} {h.label()}  │ {' '.join(h.text.split())[:90]}…")
+    print("\n── ANSWER " + "─" * 68)
+    print(textwrap.fill(ans.text, 100, replace_whitespace=False) if "\n" not in ans.text else ans.text)
+
+    cites = citation_check(ans.text, len(ans.sources))
+    print("\n── CHECKS " + "─" * 68)
+    print(f"Citations (no LLM): {cites['cited_sentences']}/{cites['sentences']} sentences cited"
+          f"  ({cites['coverage']:.0%}); sources used: {', '.join(f'S{n}' for n in cites['sources_used']) or 'none'}"
+          f"{'; INVALID: ' + str(cites['invalid_citations']) if cites['invalid_citations'] else ''}")
+
+    if not args.no_judge and ans.sources:
+        v = judge(ans, llm)
+        if v.faithfulness is None:
+            print("Faithfulness (LLM judge): n/a (the answer makes no factual claims)")
+        else:
+            supported = sum(1 for c in v.claims if c.get("verdict") == "supported")
+            print(f"Faithfulness (LLM judge): {v.faithfulness:.2f}  ({supported}/{len(v.claims)} claims supported)")
+        mark = {"supported": "✓", "unsupported": "✗", "contradicted": "✗✗"}
+        for c in v.claims:
+            src = ",".join(c.get("sources") or []) or "-"
+            print(f"   {mark.get(c.get('verdict'), '?'):<2} {c['claim'][:95]}  [{src}]")
+            if c.get("verdict") != "supported":
+                print(f"      reason: {c.get('reason', '')[:110]}")
+        print(f"Answer relevance (LLM judge): {v.relevance_score}/5  ({v.relevance:.2f}): {v.relevance_reason[:120]}")
+
+    u = llm.usage
+    cost = u.cost_usd()
+    print(f"\nLLM usage: {u.calls} calls, {u.input_tokens:,} input + {u.output_tokens:,} output tokens, "
+          f"{u.seconds:.1f}s{f', ~${cost:.4f}' if cost is not None else ''}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.WARNING)
     p = argparse.ArgumentParser(prog="retrieval")
@@ -50,8 +95,21 @@ def main(argv: list[str]) -> int:
                    help="embed the question WITHOUT the bge query instruction (to compare)")
     s.add_argument("--preview", type=int, default=220, help="characters of text to show per hit")
 
+    a = sub.add_parser("ask", help="Retrieve, answer with citations (LLM), then judge the answer")
+    a.add_argument("question")
+    a.add_argument("-k", type=int, default=5, help="chunks given to the LLM (default 5)")
+    a.add_argument("--method", choices=METHODS, default="hybrid")
+    a.add_argument("--ticker", default="")
+    a.add_argument("--year", default="")
+    a.add_argument("--form", default="")
+    a.add_argument("--item", default="")
+    a.add_argument("--no-judge", action="store_true", help="skip the faithfulness/relevance judge")
+
     sub.add_parser("serve", help="Run the HTTP API on :8000")
     args = p.parse_args(argv)
+
+    if args.command == "ask":
+        return _ask(args)
 
     if args.command == "serve":
         import uvicorn

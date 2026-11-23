@@ -8,6 +8,8 @@ and guardrails on every hop.
 > Status: **Phase 1 — Data layer and real-time ingestion** (60 SEC filings searchable; live trade stream).
 > Remaining: the 1-hour soak test and Grafana dashboard (Step 1.5). See [Phase 1 summary](docs/phase-1-summary.md).
 
+**Day to day:** [docs/connecting.md](docs/connecting.md) has every command to start the dev machine, connect, and open each UI.
+
 | Phase | Summary |
 |---|---|
 | 0 — Foundations | [docs/phase-0-summary.pdf](docs/phase-0-summary.pdf) |

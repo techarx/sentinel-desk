@@ -1,0 +1,13 @@
+# Tells the AWS SDK where to get credentials: run `cat` on the file mounted from
+# the bedrock-credentials Secret. That JSON includes an Expiration, so the SDK
+# re-reads the file shortly before expiry, by which time the dev machine's timer
+# has written fresh credentials (Kubernetes updates mounted Secret files in place).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-config
+data:
+  config: |
+    [default]
+    region = us-east-1
+    credential_process = cat /var/run/aws/credentials.json

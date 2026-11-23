@@ -62,6 +62,9 @@ echo "==> argocd CLI (latest release)"
 curl -fsSLo /usr/local/bin/argocd "https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-${ARCH}"
 chmod +x /usr/local/bin/argocd
 
+echo "==> AWS CLI (the host mints short-lived Bedrock credentials for pods)"
+command -v aws >/dev/null || snap install aws-cli --classic
+
 echo "==> Versions"
 docker --version
 runsc --version | head -1

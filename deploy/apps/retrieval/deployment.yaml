@@ -42,6 +42,10 @@ spec:
             - { name: OPENSEARCH_USER, value: admin }   # a read-only OpenSearch user comes in Phase 5
             - name: OPENSEARCH_PASSWORD
               valueFrom: { secretKeyRef: { name: opensearch-admin, key: password } }
+            # Bedrock (Step 2.6): short-lived credentials via credential_process, US inference profiles only.
+            - { name: AWS_CONFIG_FILE, value: /etc/aws/config }
+            - { name: AWS_REGION, value: us-east-1 }
+            - { name: LLM_MODEL_ID, value: us.anthropic.claude-haiku-4-5-20251001-v1:0 }
           ports:
             - { name: http, containerPort: 8000 }
           readinessProbe:
@@ -58,6 +62,14 @@ spec:
             capabilities: { drop: ["ALL"] }
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
+            - { name: aws-config, mountPath: /etc/aws, readOnly: true }
+            - { name: bedrock-credentials, mountPath: /var/run/aws, readOnly: true }
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: aws-config
+          configMap: { name: aws-config }
+        - name: bedrock-credentials
+          secret:
+            secretName: bedrock-credentials   # written by the dev machine's timer (make bedrock-creds-install)
+            optional: true                    # search still works if it's missing; only /ask needs it

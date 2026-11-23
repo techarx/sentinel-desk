@@ -179,6 +179,26 @@ trades-test: ## Integration test: seed + stream + redelivery against throwaway P
 	./scripts/trades-test.sh
 
 # ---------------------------------------------------------------------------
+##@ Bedrock credentials (run on the dev machine)
+# ---------------------------------------------------------------------------
+
+.PHONY: bedrock-creds-install
+bedrock-creds-install: ## Install the timer that refreshes short-lived Bedrock credentials for pods every 20 min
+	@command -v aws >/dev/null || sudo snap install aws-cli --classic
+	sudo install -m 0755 scripts/bedrock-credentials.sh /usr/local/sbin/sentinel-bedrock-credentials
+	sudo install -m 0644 infra/devbox/systemd/sentinel-bedrock-credentials.service infra/devbox/systemd/sentinel-bedrock-credentials.timer /etc/systemd/system/
+	sudo systemctl daemon-reload
+	sudo systemctl enable --now sentinel-bedrock-credentials.timer
+	sudo systemctl start sentinel-bedrock-credentials.service
+	@$(MAKE) -s bedrock-creds-status
+
+.PHONY: bedrock-creds-status
+bedrock-creds-status: ## When the Bedrock credentials were last refreshed, and when they expire
+	@systemctl list-timers sentinel-bedrock-credentials.timer --no-pager | sed -n '1,2p'
+	@journalctl -u sentinel-bedrock-credentials.service -n 1 --no-pager -o cat
+	@kubectl -n data get secret bedrock-credentials -o jsonpath='{.data.credentials\.json}' | base64 -d | jq -r '"expires: " + .Expiration'
+
+# ---------------------------------------------------------------------------
 ##@ Retrieval (run on the dev machine)
 # ---------------------------------------------------------------------------
 
@@ -189,6 +209,14 @@ search: ## Search the filings 3 ways: make search Q="question" [K=5] [TICKER=BAC
 	  -k $(or $(K),5) --method $(or $(METHOD),all) \
 	  --ticker "$(TICKER)" --year "$(YEAR)" --form "$(FORM)" --item "$(ITEM)" \
 	  $(if $(NO_INSTRUCTION),--no-instruction,)
+
+.PHONY: ask
+ask: ## Answer a question with citations (Bedrock) and judge it: make ask Q="question" [K=5] [TICKER=..] [YEAR=..] [ITEM=..] [METHOD=hybrid] [NO_JUDGE=1]
+	@test -n "$(Q)" || { echo 'Usage: make ask Q="your question" [TICKER=PNC] [YEAR=2025] [ITEM=7]'; exit 1; }
+	@kubectl -n data exec deploy/retrieval -- python -m retrieval ask "$(Q)" \
+	  -k $(or $(K),5) --method $(or $(METHOD),hybrid) \
+	  --ticker "$(TICKER)" --year "$(YEAR)" --form "$(FORM)" --item "$(ITEM)" \
+	  $(if $(NO_JUDGE),--no-judge,)
 
 DATA_DIR := /var/lib/sentinel-data
 
