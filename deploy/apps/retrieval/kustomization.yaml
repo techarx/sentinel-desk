@@ -8,4 +8,4 @@ resources:
   - service.yaml
 images:
   - name: ghcr.io/techarx/sentinel-retrieval
-    newTag: sha-32fdec3
+    newTag: sha-6e8cdc6
